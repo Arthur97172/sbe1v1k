@@ -28,6 +28,39 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
         └── export-sources.sh 本地导出源码包（发布到 sources-* Release）
 ```
 
+## LuCI（Web 管理界面）
+
+镜像内置 LuCI（`luci-light` 组合 + `luci-mod-admin-full`），由 `uhttpd` + `rpcd` 提供服务，
+默认监听 `0.0.0.0:80` 与 `0.0.0.0:443`（`redirect_https` 关闭）。刷机后浏览器打开
+`http://<设备地址>/` 即可；`/etc/config/luci` 的 `option lang` 为 `auto`，所有模块都装了
+`luci-i18n-*-zh-cn`，浏览器语言为中文时自动切换。
+
+版本（取自镜像内 `/usr/lib/opkg/status`，随 feeds 更新会变化）：
+
+| 组件 | 版本 |
+| --- | --- |
+| `luci-base` | 26.202.46438~d040071 |
+| `luci-light` | 23.024.33244~34dee82 |
+| `luci-mod-admin-full` | 19.253.48496~3f93650 |
+
+共 51 个 `luci-*` 包，分三类：
+
+- **核心**：`luci-base`、`luci-light`、`luci-compat`、`luci-mod-admin-full`、
+  `luci-mod-network`、`luci-mod-status`、`luci-mod-system`、`luci-lib-*`、
+  `luci-proto-ipv6`、`luci-proto-ppp`、`luci-app-package-manager`；
+  主题只有 `luci-theme-bootstrap`（未装 argon 等第三方主题）。
+- **上游应用**（feeds `luci`）：`luci-app-firewall`、`luci-app-ddns`、`luci-app-upnp`、
+  `luci-app-ttyd`。
+- **项目与三方应用**：
+  - 本项目 feeds（`sources/apps`）：`luci-app-fcc`、`luci-app-ledfancontrol`、
+    `luci-app-nssecm`、`luci-app-online-upgrade`、`luci-app-substore`
+  - 三方 feeds（`sources/thirdparty-feed`）：`luci-app-bandix-plus`、`luci-app-cpu-status`、
+    `luci-app-nikki`、`luci-app-openclash`、`luci-app-passwall`、`luci-app-poweroffdevice`、
+    `luci-app-wifihistory`
+  - 代理后端（`sources/passwall-selected`）：`chinadns-ng`、`dns2socks`、`ipt2socks`、
+    `microsocks`、`shadowsocksr-libev`、`simple-obfs`、`tcping`；另有 `xray`、`sing-box`、
+    `mihomo`、`ruby` 等运行依赖，均不带 LuCI 界面包之外的额外前端。
+
 ## 本机构建
 
 装配树位于 `<工作区>/sources/buildroot`（本目录的上一级目录里）。
@@ -47,8 +80,8 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
 
 ## CI
 
-`.github/workflows/build.yml` 在 `main` 分支上，`24.10-6.6/**` 或工作流本身变更时
-触发（也可手动 `workflow_dispatch`，可指定源码包 tag）。
+`.github/workflows/build-24.10-6.6.yml`（`name: 📦 Build 24.10-6.6`）在 `main` 分支上，
+`24.10-6.6/**` 或工作流本身变更时触发（也可手动 `workflow_dispatch`，可指定源码包 tag）。
 
 流程：下载并校验源码包 → 解包到 `sources/` → `prepare-tree.sh` → `render-overlay.sh`
 （占位符没替换成功就立刻失败）→ 编译 → `verify-image.sh` → 上传日志/产物 →

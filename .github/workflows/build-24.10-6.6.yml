@@ -1,4 +1,4 @@
-name: build-firmware
+name: 📦 Build 24.10-6.6
 
 # 在 GitHub Actions 上编译 Spectrum SBE1V1K（IPQ9574）OpenWrt+QSDK 固件，
 # 并把三个交付镜像发布到本次运行专属的 GitHub Release。
@@ -23,7 +23,7 @@ on:
   push:
     branches: [main]
     paths:
-      - '.github/workflows/build.yml'
+      - '.github/workflows/build-24.10-6.6.yml'
       - '24.10-6.6/**'
 
 permissions:
