@@ -1,0 +1,24 @@
+From: P-B device definition staging <noreply@sbe1v1k-build>
+Subject: [PATCH 0002] arm64: dts: qcom: build ipq9574-sbe1v1k.dtb
+
+Registers the new board DTS in the kernel DTB list.  Destination inside the
+build tree: target/linux/feeds/files-6.6/arch/arm64/boot/dts/qcom/Makefile
+(i.e. oss-kernel-linux-ipq-files/arch/arm64/boot/dts/qcom/Makefile); the
+ipq95xx target Makefile copies that tree over qca/src/linux-6.6 before the
+kernel is built.
+
+This is required because the device definition sets
+BUILD_DTS_ipq9574-sbe1v1k := 1, which makes image.mk skip its own dtc run;
+without this line the DTB would never be built and the FIT step would fail
+on a missing arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dtb.
+
+--- a/arch/arm64/boot/dts/qcom/Makefile
++++ b/arch/arm64/boot/dts/qcom/Makefile
+@@ -108,6 +108,7 @@
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9574-db-al02-c1.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9574-db-al02-c2.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9574-db-al02-c3.dtb
++dtb-$(CONFIG_ARCH_QCOM)	+= ipq9574-sbe1v1k.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9574-rdp475-c1.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9650-db-ju01.dtb
+ dtb-$(CONFIG_ARCH_QCOM)	+= ipq9650-db-ju01-c1.dtb

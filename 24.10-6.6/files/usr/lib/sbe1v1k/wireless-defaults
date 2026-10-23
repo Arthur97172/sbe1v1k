@@ -1,0 +1,361 @@
+#!/bin/sh
+# Apply wireless defaults once, after all radios exist on the target platform.
+#
+# Supported boards:
+#   - spectrum,sbe1v1k
+#
+# Design:
+#   1. Check whether the current board is supported.
+#   2. Wait for OpenWrt/mac80211 to discover all available radios/interfaces.
+#   3. Dynamically configure only the bands that actually exist.
+#   4. Protect discovered 6 GHz interfaces before applying the final policy.
+#   5. Commit wireless configuration.
+#   6. Mark the policy as applied only after successful configuration.
+
+set -eu
+
+###############################################################################
+# Global configuration
+###############################################################################
+
+MARKER='system.@system[0].spectrum_wireless_defaults'
+MAX_ATTEMPTS="${WIFI_WAIT_ATTEMPTS:-30}"
+WIFI_COUNTRY="${WIFI_COUNTRY:-US}"
+
+# 2.4 GHz
+WIFI_2G_CHANNEL="${WIFI_2G_CHANNEL:-6}"
+WIFI_2G_HTMODE="${WIFI_2G_HTMODE:-HE40}"
+WIFI_2G_TXPOWER="${WIFI_2G_TXPOWER:-28}"
+WIFI_2G_SSID="${WIFI_2G_SSID:-WiFi_2.4G}"
+
+# 5 GHz
+WIFI_5G_CHANNEL="${WIFI_5G_CHANNEL:-36}"
+WIFI_5G_HTMODE="${WIFI_5G_HTMODE:-EHT160}"
+WIFI_5G_TXPOWER="${WIFI_5G_TXPOWER:-23}"
+WIFI_5G_SSID="${WIFI_5G_SSID:-WiFi_5G}"
+
+# 6 GHz
+WIFI_6G_CHANNEL="${WIFI_6G_CHANNEL:-37}"
+WIFI_6G_HTMODE="${WIFI_6G_HTMODE:-EHT320}"
+WIFI_6G_TXPOWER="${WIFI_6G_TXPOWER:-28}"
+WIFI_6G_SSID="${WIFI_6G_SSID:-WiFi_6G}"
+
+WIFI_KEY="${WIFI_KEY:-12345678}"
+
+###############################################################################
+# Board detection
+###############################################################################
+
+get_board_name() {
+	if [ -r /tmp/sysinfo/board_name ]; then
+		cat /tmp/sysinfo/board_name
+	elif command -v board_name >/dev/null 2>&1; then
+		command board_name
+	else
+		return 1
+	fi
+}
+
+is_supported_board() {
+	local board
+
+	board="$(get_board_name 2>/dev/null || true)"
+
+	case "$board" in
+		spectrum,sbe1v1k)
+			return 0
+			;;
+		*)
+			return 1
+			;;
+	esac
+}
+
+###############################################################################
+# Wireless UCI discovery helpers
+###############################################################################
+
+radios_for_band() {
+	uci -q show wireless 2>/dev/null |
+		sed -n \
+			-e "s/^wireless\.\([^.=]*\)\.band='$1'$/\1/p" \
+			-e "s/^wireless\.\([^.=]*\)\.band=$1$/\1/p"
+}
+
+ifaces_for_radio() {
+	uci -q show wireless 2>/dev/null |
+		sed -n \
+			-e "s/^wireless\.\([^.=]*\)\.device='$1'$/\1/p" \
+			-e "s/^wireless\.\([^.=]*\)\.device=$1$/\1/p"
+}
+
+###############################################################################
+# UCI helpers
+###############################################################################
+
+delete_if_present() {
+	uci -q delete "$1" >/dev/null 2>&1 || true
+}
+
+get_uci_value() {
+	uci -q get "$1" 2>/dev/null || true
+}
+
+set_if_changed() {
+	local option="$1"
+	local value="$2"
+	local current
+
+	current="$(get_uci_value "$option")"
+
+	[ "$current" = "$value" ] || uci -q set "$option"="$value"
+}
+
+###############################################################################
+# Wireless discovery completeness
+###############################################################################
+
+wireless_is_complete() {
+	local band radio radios ifaces
+	local found_any=0
+
+	for band in 2g 5g 6g; do
+		radios="$(radios_for_band "$band")"
+
+		if [ -n "$radios" ]; then
+			found_any=1
+
+			for radio in $radios; do
+				ifaces="$(ifaces_for_radio "$radio")"
+
+				[ -n "$ifaces" ] || return 1
+			done
+		fi
+	done
+
+	[ "$found_any" -eq 1 ] || return 1
+}
+
+###############################################################################
+# 6 GHz safety protection
+###############################################################################
+
+safeguard_discovered_6g() {
+	local radio iface current key_line changed=0
+
+	for radio in $(radios_for_band 6g); do
+		for iface in $(ifaces_for_radio "$radio"); do
+			current="$(get_uci_value "wireless.$iface.disabled")"
+
+			if [ "$current" != "1" ]; then
+				uci -q set wireless."$iface".disabled='1'
+				changed=1
+			fi
+
+			key_line="$(get_uci_value "wireless.$iface.key")"
+			if [ -n "$key_line" ] && [ -z "$(printf '%s' "$key_line" | tr -d '[:space:]')" ]; then
+				delete_if_present "wireless.$iface.key"
+				changed=1
+			fi
+		done
+	done
+
+	if [ "$changed" -eq 1 ]; then
+		uci -q commit wireless
+	fi
+}
+
+###############################################################################
+# Common AP configuration
+###############################################################################
+
+apply_ap_common() {
+	local iface="$1"
+
+	set_if_changed "wireless.$iface.uapsd" "0"
+	set_if_changed "wireless.$iface.disassoc_low_ack" "0"
+	set_if_changed "wireless.$iface.ieee80211k" "1"
+	set_if_changed "wireless.$iface.rrm_neighbor_report" "1"
+	set_if_changed "wireless.$iface.rrm_beacon_report" "1"
+	set_if_changed "wireless.$iface.bss_transition" "1"
+	set_if_changed "wireless.$iface.disabled" "0"
+}
+
+###############################################################################
+# 2.4 GHz policy
+###############################################################################
+
+apply_2g_policy() {
+	local radio iface
+
+	for radio in $(radios_for_band 2g); do
+		set_if_changed "wireless.$radio.country" "$WIFI_COUNTRY"
+		set_if_changed "wireless.$radio.channel" "$WIFI_2G_CHANNEL"
+		set_if_changed "wireless.$radio.htmode" "$WIFI_2G_HTMODE"
+		set_if_changed "wireless.$radio.txpower" "$WIFI_2G_TXPOWER"
+		set_if_changed "wireless.$radio.he_mu_beamformer" "0"
+		set_if_changed "wireless.$radio.he_su_beamformer" "1"
+
+		for iface in $(ifaces_for_radio "$radio"); do
+			[ "$(get_uci_value "wireless.$iface.mode")" = "ap" ] || continue
+
+			set_if_changed "wireless.$iface.ssid" "$WIFI_2G_SSID"
+			set_if_changed "wireless.$iface.encryption" "sae-mixed"
+			set_if_changed "wireless.$iface.key" "$WIFI_KEY"
+
+			apply_ap_common "$iface"
+
+			set_if_changed "wireless.$iface.ieee80211r" "0"
+			delete_if_present "wireless.$iface.mobility_domain"
+			delete_if_present "wireless.$iface.ft_over_ds"
+			delete_if_present "wireless.$iface.ft_psk_generate_local"
+		done
+	done
+}
+
+###############################################################################
+# 5 GHz policy
+###############################################################################
+
+apply_5g_policy() {
+	local radio iface
+
+	for radio in $(radios_for_band 5g); do
+		set_if_changed "wireless.$radio.country" "$WIFI_COUNTRY"
+		set_if_changed "wireless.$radio.channel" "$WIFI_5G_CHANNEL"
+		set_if_changed "wireless.$radio.htmode" "$WIFI_5G_HTMODE"
+		set_if_changed "wireless.$radio.txpower" "$WIFI_5G_TXPOWER"
+		set_if_changed "wireless.$radio.he_su_beamformer" "1"
+		set_if_changed "wireless.$radio.he_mu_beamformer" "1"
+		set_if_changed "wireless.$radio.eht_su_beamformer" "1"
+		set_if_changed "wireless.$radio.eht_mu_beamformer" "1"
+		set_if_changed "wireless.$radio.he_bss_color" "2"
+		set_if_changed "wireless.$radio.background_radar" "1"
+
+		for iface in $(ifaces_for_radio "$radio"); do
+			[ "$(get_uci_value "wireless.$iface.mode")" = "ap" ] || continue
+
+			set_if_changed "wireless.$iface.ssid" "$WIFI_5G_SSID"
+			set_if_changed "wireless.$iface.encryption" "sae-mixed"
+			set_if_changed "wireless.$iface.key" "$WIFI_KEY"
+
+			apply_ap_common "$iface"
+
+			set_if_changed "wireless.$iface.max_inactivity" "86400"
+			set_if_changed "wireless.$iface.ieee80211r" "1"
+			set_if_changed "wireless.$iface.mobility_domain" "6616"
+			set_if_changed "wireless.$iface.ft_over_ds" "0"
+			set_if_changed "wireless.$iface.ft_psk_generate_local" "1"
+		done
+	done
+}
+
+###############################################################################
+# 6 GHz policy
+###############################################################################
+
+apply_6g_policy() {
+	local radio iface
+
+	for radio in $(radios_for_band 6g); do
+		set_if_changed "wireless.$radio.country" "$WIFI_COUNTRY"
+		set_if_changed "wireless.$radio.band" "6g"
+		set_if_changed "wireless.$radio.channel" "$WIFI_6G_CHANNEL"
+		set_if_changed "wireless.$radio.htmode" "$WIFI_6G_HTMODE"
+		set_if_changed "wireless.$radio.txpower" "$WIFI_6G_TXPOWER"
+		set_if_changed "wireless.$radio.eht_su_beamformer" "1"
+		set_if_changed "wireless.$radio.eht_mu_beamformer" "1"
+		set_if_changed "wireless.$radio.he_su_beamformer" "1"
+		set_if_changed "wireless.$radio.he_mu_beamformer" "1"
+		set_if_changed "wireless.$radio.he_bss_color" "1"
+
+		for iface in $(ifaces_for_radio "$radio"); do
+			set_if_changed "wireless.$iface.mode" "ap"
+			set_if_changed "wireless.$iface.network" "lan"
+			set_if_changed "wireless.$iface.ssid" "$WIFI_6G_SSID"
+			set_if_changed "wireless.$iface.encryption" "sae"
+			set_if_changed "wireless.$iface.key" "$WIFI_KEY"
+			set_if_changed "wireless.$iface.ieee80211w" "2"
+
+			delete_if_present "wireless.$iface.mesh_id"
+			delete_if_present "wireless.$iface.mesh_fwding"
+			delete_if_present "wireless.$iface.wds"
+			delete_if_present "wireless.$iface.owe_groups"
+			delete_if_present "wireless.$iface.owe_transition_ifname"
+			delete_if_present "wireless.$iface.owe_transition_ssid"
+
+			apply_ap_common "$iface"
+
+			set_if_changed "wireless.$iface.ieee80211r" "1"
+			set_if_changed "wireless.$iface.mobility_domain" "6616"
+			set_if_changed "wireless.$iface.ft_over_ds" "0"
+			set_if_changed "wireless.$iface.ft_psk_generate_local" "1"
+		done
+	done
+}
+
+###############################################################################
+# Apply complete wireless policy
+###############################################################################
+
+apply_policy() {
+	if ! is_supported_board; then
+		return 1
+	fi
+
+	apply_2g_policy
+	apply_5g_policy
+	apply_6g_policy
+
+	uci -q commit wireless
+	uci -q set "$MARKER"='1'
+	uci -q commit system
+}
+
+###############################################################################
+# Main
+###############################################################################
+
+if ! is_supported_board; then
+	exit 0
+fi
+
+if [ "$(get_uci_value "$MARKER")" = "1" ]; then
+	exit 0
+fi
+
+case "$MAX_ATTEMPTS" in
+	''|*[!0-9]*)
+		MAX_ATTEMPTS=30
+		;;
+esac
+
+[ "$MAX_ATTEMPTS" -gt 0 ] || MAX_ATTEMPTS=1
+
+attempt=1
+
+while :; do
+	if command -v wifi >/dev/null 2>&1; then
+		wifi config >/dev/null 2>&1 || true
+	fi
+
+	safeguard_discovered_6g
+
+	if wireless_is_complete; then
+		if apply_policy; then
+			exit 0
+		fi
+	fi
+
+	if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+		break
+	fi
+
+	attempt=$((attempt + 1))
+	sleep 1
+done
+
+printf '%s\n' \
+	'Wireless defaults: Wireless configuration could not be fully generated; will retry next boot' >&2
+
+exit 1

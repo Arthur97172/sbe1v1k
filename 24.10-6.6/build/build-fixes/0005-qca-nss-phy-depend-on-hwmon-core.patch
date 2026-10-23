@@ -1,0 +1,11 @@
+--- a/qca/feeds/nss/base/qca-nss-phy/Makefile
++++ b/qca/feeds/nss/base/qca-nss-phy/Makefile
+@@ -24,7 +24,7 @@
+ 	    $(if $(filter m, $(CONFIG_SFP)),$(LINUX_DIR)/drivers/net/phy/sfp.ko)
+ 
+   PROVIDES:=qca-nss-phy
+-  DEPENDS:=+kmod-qca-mdio
++  DEPENDS:=+kmod-qca-mdio +kmod-hwmon-core
+   AUTOLOAD:=$(call AutoLoad,08,qca-nss-phy \
+ 	    $(if $(filter m, $(CONFIG_SFP)),sfp))
+ endef

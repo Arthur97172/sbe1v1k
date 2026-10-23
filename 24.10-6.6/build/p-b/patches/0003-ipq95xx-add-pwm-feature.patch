@@ -1,0 +1,24 @@
+From: P-B device definition staging <noreply@sbe1v1k-build>
+Subject: [PATCH 0003] ipq95xx: add "pwm" target feature
+
+The SBE1V1K drives its RGB LEDs and the fan through the IPQ9574 PWM
+controller.  kmod-leds-pwm declares "DEPENDS:= @PWM_SUPPORT"
+(pros/package/kernel/linux/modules/leds.mk:224), and PWM_SUPPORT is only
+selected when the target's FEATURES contains "pwm"
+(scripts/target-metadata.pl:36).  ipq95xx does not list it, so without this
+line the DEVICE_PACKAGES entry "kmod-leds-pwm" in patch 0001 would be
+unavailable and the package would be silently dropped at build time.
+
+CONFIG_PWM and CONFIG_PWM_IPQ are already =y in ipq95xx/config-6.6; this
+change only makes the consumer drivers selectable.
+
+Destination inside the build tree:
+target/linux/ipq95xx/Makefile (oss-system-feeds-target-ipq/ipq95xx/Makefile).
+
+--- a/ipq95xx/Makefile
++++ b/ipq95xx/Makefile
+@@ -5,3 +5,3 @@
+ BOARDNAME:=Qualcomm Technologies, Inc. IPQ95XX
+-FEATURES:=squashfs fpu ramdisk nand pcie usbgadget
++FEATURES:=squashfs fpu ramdisk nand pcie usbgadget pwm
+ CPU_TYPE:=cortex-a73

@@ -1,0 +1,311 @@
+CONFIG_TARGET_ipq95xx=y
+CONFIG_TARGET_ipq95xx_generic=y
+CONFIG_TARGET_ipq95xx_generic_DEVICE_spectrum_sbe1v1k=y
+CONFIG_TARGET_DEVICE_PACKAGES_ipq95xx_generic_DEVICE_spectrum_sbe1v1k=""
+# Stage 3 / G3.1 — NSS datapath base (see docs/STAGE3_INTEGRATION_PLAN.md)
+CONFIG_PACKAGE_kmod-qca-ssdk-nohnat=y
+CONFIG_PACKAGE_qca-ssdk-shell=y
+CONFIG_PACKAGE_kmod-qca-nss-phy=y
+CONFIG_PACKAGE_kmod-qca-nss-dp=y
+CONFIG_PACKAGE_kmod-qca-nss-debug=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-vp=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-rule=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-ds=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-bridge-mgr=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-vlan-mgr=y
+CONFIG_PACKAGE_kmod-qca-nss-ppe-ath-clients=y
+CONFIG_PACKAGE_kmod-qca-nss-flowmgr=y
+CONFIG_PACKAGE_kmod-qca-nss-sfe=y
+CONFIG_PACKAGE_kmod-qca-nss-netfn-sk-offload=y
+# Stage 3 / G3.3 — Wi-Fi driver stack (QSDK wlan-open feed)
+# kmod-ath is the shared ath/ath12k support module the vendor image also
+# ships; kmod-mac80211 pulls the NSS-WiFi plugins.  (ECM no longer depends on
+# kmod-ath: build-fix 0006 disables ECM multicast, matching the vendor.)
+
+CONFIG_PACKAGE_kmod-ath=y
+CONFIG_PACKAGE_kmod-mac80211=y
+CONFIG_PACKAGE_kmod-ath12k=y
+CONFIG_PACKAGE_kmod-qca-wifi-nss-plugins=y
+# Stage 3 / G3.2 — NSS ECM offload engine
+CONFIG_PACKAGE_kmod-qca-nss-ecm-standard=y
+# Stage 3 / G3.3 — disable the unused MACsec wpad variant.
+# QSDK marks it DEFAULT:=m, so `make world` builds it even when it is not
+# installed.  Its driver_macsec_qca.c needs nss_macsec_secy.h from the
+# qca-nss-macsec userland staging dir, which this device does not use (the
+# vendor rootfs ships no wpad-macsec).  hostapd_cli parity is kept through
+# hostapd-utils, which the vendor image also installs.
+# CONFIG_PACKAGE_wpad-macsec-noextns is not set
+# Stage 3 / G3.3 — ATHDEBUG off, matching the vendor image.
+# PACKAGE_ATHDEBUG=y adds CPTCFG_ATHDEBUG, which makes mac80211's
+# Build/Prepare run Build/refactor with the host tool `spatch`
+# (coccinelle).  The vendor image contains neither ath_debug.ko nor
+# any athdbg_*/athmem* symbol, so its build had ATHDEBUG off.
+# CONFIG_PACKAGE_ATHDEBUG is not set
+# Stage 3 / G3.3 — mosquitto (pulled by hostapd WPA_MQTT_SUPPORT) needs c-ares;
+# vendor libcares 1.33.1-r1 comes from the same qca/feeds/packages tree.
+CONFIG_PACKAGE_libcares=y
+# Stage 3 / G3.4 — hostapd/wpad and firmware/BDF.
+# The vendor image does NOT ship wpad: its supplicant/authenticator is the
+# qcawifi package `qca-hapd-supp` (+ `qca-hostapd-cli`), which is not in the
+# α′ component set.  For the ath12k stack the QSDK feed default is the
+# `-noextns` variant, because the QCN extension variant needs the separate
+# `qcn-app-extns` tree (qca/src/qcn-app-extns/qacs/qacs.c).  That tree is not
+# in the qsdk14 import and its upstream repo is not publicly retrievable, so
+# the extension variant is SOURCE_UNAVAILABLE for this build (see
+# docs/STAGE3_INTEGRATION_PLAN.md §3.4).  Use the noextns pair.
+CONFIG_PACKAGE_wpad-mesh-openssl-noextns=y
+CONFIG_PACKAGE_hostapd-utils-noextns=y
+# CONFIG_PACKAGE_wpad-mesh-openssl is not set
+# CONFIG_PACKAGE_hostapd-utils is not set
+# QCN92XX firmware/board/regdb + vendor BDF41 blobs, copied verbatim from
+# package sbe-full-candidate v23.  LICENSE_REVIEW_REQUIRED (decision N-3).
+CONFIG_PACKAGE_sbe-wifi-firmware=y
+# G3.5-c (F8) — traceable version/identity metadata.  The revision string
+# also lives in sources/buildroot/version, which scripts/getver.sh reads
+# first (there is no git checkout in this tree, so it used to say "unknown").
+CONFIG_IMAGEOPT=y
+CONFIG_VERSIONOPT=y
+CONFIG_VERSION_DIST="OpenWrt"
+CONFIG_VERSION_NUMBER="24.10-SNAPSHOT"
+CONFIG_VERSION_CODE="sbe1v1k-g3.5c"
+CONFIG_VERSION_PRODUCT="SBE1V1K"
+# Keep image filenames stable (no version/code prefix).
+# CONFIG_VERSION_FILENAMES is not set
+# CONFIG_VERSION_CODE_FILENAMES is not set
+# G3.5-c (F5) — this image ships a fixed package set; upstream has no
+# ipq95xx target and no matching kernel ABI, so do not generate bogus
+# distfeeds URLs.
+CONFIG_OPKG_NO_DISTFEEDS=y
+# G3.6 — LuCI 基础界面 (user request, 2026-10-21).  Collection `luci-light`
+# (system/status/network/firewall + bootstrap theme), HTTPS via uhttpd's
+# default 80/443 listeners and px5g-generated self-signed cert, Simplified
+# Chinese translation.  The `luci` and `luci-ssl` collections are NOT used:
+# they would pull the whole LuCI application set.  (G3.6 initially left the
+# package-manager GUI out; the user requested it explicitly in G3.7, so the
+# single official package is selected directly below rather than via a
+# collection.)
+# Feed: official openwrt/luci @ openwrt-24.10, pinned d0400718c508…
+# (see sources/PROVENANCE.md and docs/SECURITY_FINDINGS.md §7).
+CONFIG_PACKAGE_luci-light=y
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-app-firewall=y
+CONFIG_PACKAGE_luci-mod-admin-full=y
+CONFIG_PACKAGE_luci-mod-network=y
+CONFIG_PACKAGE_luci-mod-status=y
+CONFIG_PACKAGE_luci-mod-system=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_luci-proto-ppp=y
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
+CONFIG_LUCI_LANG_zh_Hans=y
+# Web stack: uhttpd + ubus/ucode plugins, rpcd and its plugins.
+CONFIG_PACKAGE_uhttpd=y
+CONFIG_PACKAGE_uhttpd-mod-ubus=y
+CONFIG_PACKAGE_uhttpd-mod-ucode=y
+CONFIG_PACKAGE_px5g-mbedtls=y
+CONFIG_PACKAGE_rpcd=y
+CONFIG_PACKAGE_rpcd-mod-file=y
+CONFIG_PACKAGE_rpcd-mod-luci=y
+CONFIG_PACKAGE_rpcd-mod-ucode=y
+CONFIG_PACKAGE_rpcd-mod-rrdns=y
+CONFIG_PACKAGE_cgi-io=y
+CONFIG_PACKAGE_ucode-mod-math=y
+CONFIG_PACKAGE_ucode-mod-html=y
+CONFIG_PACKAGE_liblucihttp-ucode=y
+# G3.7 — package-manager GUI, explicitly requested by the user on
+# 2026-10-21 after G3.6 had left it out.  It is the official LuCI
+# application (Apache-2.0) and depends only on luci-base; the opkg backend
+# is already in the image (CONFIG_OPKG_NO_DISTFEEDS=y still applies).
+CONFIG_PACKAGE_luci-app-package-manager=y
+CONFIG_PACKAGE_luci-i18n-package-manager-zh-cn=y
+
+# G3.7 — re-assert F6 (G3.5-c).  The qca bootloader packages carry
+# `DEFAULT:=y` in their own Makefiles, and `target.mk` no longer protects us
+# once the package index actually contains them: G3.6 only ran
+# `feeds update luci`, so these were invisible to defconfig; the full
+# `feeds update` done for G3.7 rebuilt every src-link index and defconfig
+# pulled all 16 empty `uboot-*` meta-packages back into the image (they had
+# reappeared in /usr/lib/opkg/status, and they trigger 16 pointless U-Boot
+# builds).  Keep only `uboot-envtools`, exactly as F6 requires.
+# CONFIG_PACKAGE_uboot-2025-ipq9574-debug-mmc is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-debug-nand is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-debug-norplusmmc is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-debug-norplusnand is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-mmc is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-nand is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-norplusmmc is not set
+# CONFIG_PACKAGE_uboot-2025-ipq9574-norplusnand is not set
+# CONFIG_PACKAGE_uboot-ipq9574-debug-mmc is not set
+# CONFIG_PACKAGE_uboot-ipq9574-debug-nand is not set
+# CONFIG_PACKAGE_uboot-ipq9574-debug-norplusmmc is not set
+# CONFIG_PACKAGE_uboot-ipq9574-debug-norplusnand is not set
+# CONFIG_PACKAGE_uboot-ipq9574-mmc is not set
+# CONFIG_PACKAGE_uboot-ipq9574-nand is not set
+# CONFIG_PACKAGE_uboot-ipq9574-norplusmmc is not set
+# CONFIG_PACKAGE_uboot-ipq9574-norplusnand is not set
+CONFIG_PACKAGE_uboot-envtools=y
+
+# G3.7 — five user-authored LuCI applications (explicit user request,
+# 2026-10-21).  Sources are pinned per-repo GitHub checkouts under
+# sources/apps/ (feed `sbe1v1k_apps`); SHA, licence and audit records are
+# in sources/PROVENANCE.md §2.7 and docs/SECURITY_FINDINGS.md §7.3.
+# Lua applications need the Lua runtime/compat shim; jffs/ucode apps do not.
+CONFIG_PACKAGE_luci-app-substore=y
+CONFIG_PACKAGE_luci-app-fcc=y
+CONFIG_PACKAGE_luci-app-online-upgrade=y
+CONFIG_PACKAGE_luci-app-ledfancontrol=y
+CONFIG_PACKAGE_luci-app-nssecm=y
+# Runtime dependencies (also pulled automatically; listed for auditability).
+CONFIG_PACKAGE_luci-lua-runtime=y
+CONFIG_PACKAGE_luci-compat=y
+CONFIG_PACKAGE_luci-lib-httpclient=y
+CONFIG_PACKAGE_lua=y
+CONFIG_PACKAGE_libubus-lua=y
+CONFIG_PACKAGE_liblucihttp-lua=y
+CONFIG_PACKAGE_ucode-mod-lua=y
+CONFIG_PACKAGE_curl=y
+CONFIG_PACKAGE_tmux=y
+# G3.7 — curl's Config.in defaults LIBCURL_NGHTTP2=y, which makes libcurl4
+# depend on the separate `libnghttp2` binary package.  That package exists in
+# qca/feeds/packages/libs/nghttp2 but is not wired into the tree (the
+# `packages` feed has no index, so only explicitly linked packages are
+# visible), and pulling it in would add another upstream source and licence
+# entry for no functional gain: the five apps only fetch release pages over
+# HTTP/1.1.  Disable HTTP/2 instead of adding the dependency
+# (logs/build_stage3_g37_install_err.log: "cannot find dependency
+# libnghttp2 for libcurl4").  HTTP/3 and QUIC already default to n because
+# they require LIBCURL_OPENSSL.
+# CONFIG_LIBCURL_NGHTTP2 is not set
+CONFIG_PACKAGE_jsonfilter=y
+# Simplified Chinese catalogs for the five apps.
+CONFIG_PACKAGE_luci-i18n-substore-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-fcc-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-online-upgrade-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-ledfancontrol-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-nssecm-zh-cn=y
+
+# G3.8 — UPnP IGD (user request, 2026-10-22).  The vendor image ships
+# miniupnpd-nftables 2.3.7-r1 (same version as qca/feeds/packages) plus a
+# LuCI page, with /etc/config/upnpd defaulting to enabled=0.  This image uses
+# firewall4/nftables, so select the nftables variant (the package's
+# DEFAULT_VARIANT); miniupnpd-iptables conflicts with it.  Source is the
+# BSD-3-Clause upstream tarball; libcap-ng is the only new dependency.
+# Risk R-27 (UPnP opens ports on request) is recorded in RISKS_AND_BLOCKERS.
+CONFIG_PACKAGE_miniupnpd-nftables=y
+# CONFIG_PACKAGE_miniupnpd-iptables is not set
+CONFIG_PACKAGE_libcap-ng=y
+CONFIG_PACKAGE_luci-app-upnp=y
+CONFIG_PACKAGE_luci-i18n-upnp-zh-cn=y
+
+# G3.9 — seven apps requested by the user on 2026-10-22 (PassWall, Nikki,
+# OpenClash, poweroffdevice, bandix-plus, cpu-status, wifihistory).
+# Sources and licences: sources/PROVENANCE.md §2.9, docs/SECURITY_FINDINGS.md §7.9.
+# Proxy cores are the in-tree qca versions (xray-core 25.1.30, sing-box
+# 1.12.12) because the upstream passwall-packages releases need Go 1.25/1.27
+# while the tree's golang/host is 1.23.12.  geoview and v2ray-plugin have no
+# Go-1.23-compatible release and are deliberately not built (user decision,
+# 2026-10-22).
+CONFIG_PACKAGE_dnsmasq-full=y
+CONFIG_PACKAGE_kmod-tun=y
+CONFIG_PACKAGE_kmod-inet-diag=y
+CONFIG_PACKAGE_kmod-nft-socket=y
+CONFIG_PACKAGE_kmod-nft-tproxy=y
+CONFIG_PACKAGE_kmod-dummy=y
+CONFIG_PACKAGE_ip-full=y
+CONFIG_PACKAGE_yq=y
+CONFIG_PACKAGE_bash=y
+CONFIG_PACKAGE_unzip=y
+# PassWall — minimal usable set.  Every INCLUDE_* that the package defaults
+# to y on aarch64 must be disabled explicitly, or defconfig will select it.
+CONFIG_PACKAGE_luci-app-passwall=y
+CONFIG_PACKAGE_luci-app-passwall_Nftables_Transparent_Proxy=y
+# CONFIG_PACKAGE_luci-app-passwall_Iptables_Transparent_Proxy is not set
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SingBox=y
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Geoview is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Plugin is not set
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Simple_Obfs=y
+CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Client=y
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_SmartDNS is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Haproxy is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Client is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Hysteria is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_NaiveProxy is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadow_TLS is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_V2ray_Geodata is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Xray_Plugin is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_Shadowsocks_Rust_Server is not set
+# CONFIG_PACKAGE_luci-app-passwall_INCLUDE_ShadowsocksR_Libev_Server is not set
+CONFIG_PACKAGE_xray-core=y
+CONFIG_PACKAGE_sing-box=y
+CONFIG_PACKAGE_simple-obfs-client=y
+CONFIG_PACKAGE_shadowsocksr-libev-ssr-local=y
+CONFIG_PACKAGE_shadowsocksr-libev-ssr-redir=y
+CONFIG_PACKAGE_chinadns-ng=y
+CONFIG_PACKAGE_dns2socks=y
+CONFIG_PACKAGE_ipt2socks=y
+CONFIG_PACKAGE_microsocks=y
+CONFIG_PACKAGE_tcping=y
+CONFIG_PACKAGE_lyaml=y
+CONFIG_PACKAGE_resolveip=y
+CONFIG_PACKAGE_coreutils=y
+CONFIG_PACKAGE_coreutils-base64=y
+CONFIG_PACKAGE_coreutils-nohup=y
+CONFIG_PACKAGE_coreutils-timeout=y
+# Nikki — mihomo-meta variant (PROVIDES mihomo, the package's DEFAULT_VARIANT).
+CONFIG_PACKAGE_nikki=y
+CONFIG_PACKAGE_luci-app-nikki=y
+CONFIG_PACKAGE_mihomo-meta=y
+# CONFIG_PACKAGE_mihomo-alpha is not set
+# OpenClash — no bundled core; the web UI downloads mihomo at runtime.
+CONFIG_PACKAGE_luci-app-openclash=y
+CONFIG_PACKAGE_ruby=y
+CONFIG_PACKAGE_ruby-yaml=y
+# ruby 默认开启 YJIT（aarch64），其 PKG_BUILD_DEPENDS 会要求 rust/host
+# 工具链；本项目只需要 OpenClash 的配置解析脚本，不需要 JIT，故关闭。
+# CONFIG_RUBY_ENABLE_YJIT is not set
+# Small apps.
+CONFIG_PACKAGE_luci-app-poweroffdevice=y
+CONFIG_PACKAGE_luci-app-cpu-status=y
+CONFIG_PACKAGE_luci-app-wifihistory=y
+CONFIG_PACKAGE_luci-app-bandix-plus=y
+CONFIG_PACKAGE_bandix-plus=y
+CONFIG_PACKAGE_zoneinfo-all=y
+CONFIG_PACKAGE_conntrack=y
+# iw / iw-full are two variants of the same package/network/utils/iw and
+# both install /usr/sbin/iw, so selecting `iw` while another package pulls
+# the default `iw-full` variant makes package/install fail with
+# check_data_file_clashes.  iw-full PROVIDES iw, which satisfies
+# bandix-plus' `+iw` dependency, so select only the full variant.
+# CONFIG_PACKAGE_iw is not set
+CONFIG_PACKAGE_iw-full=y
+
+# G3.9 addendum (2026-10-22, user request): DDNS / ttyd / Mount Points.
+# ddns-scripts is PKGARCH:=all (scripts only, no download); ttyd needs
+# libwebsockets 4.3.3 + libuv from qca/feeds/packages (source tarballs
+# fetched at build time, hashes pinned in the feed Makefiles); block-mount
+# lives in package/system/fstools and provides /sbin/block, which is what
+# unhides LuCI's "Mount Points" page (luci-mod-system).
+CONFIG_PACKAGE_luci-app-ddns=y
+CONFIG_PACKAGE_ddns-scripts=y
+CONFIG_PACKAGE_luci-i18n-ddns-zh-cn=y
+CONFIG_PACKAGE_luci-app-ttyd=y
+CONFIG_PACKAGE_ttyd=y
+CONFIG_PACKAGE_luci-i18n-ttyd-zh-cn=y
+CONFIG_PACKAGE_block-mount=y
+# ttyd defaults to enable=1 upstream; this package installs an
+# /etc/uci-defaults script that sets it to 0 (see build/local-packages/).
+CONFIG_PACKAGE_sbe1v1k-defaults=y
+# coreutils configures with --enable-acl unconditionally; libacl must be staged.
+CONFIG_PACKAGE_libacl=y
+# bandix-plus declares +conntrack +iw (upstream Makefile:72).  conntrack
+# comes from qca/feeds/packages/net/conntrack-tools, which needs libtirpc
+# (build dep, --with-libtirpc) plus the libnetfilter-* libraries; all four
+# libraries already exist in qca/feeds/packages and are linked into the tree.
+CONFIG_PACKAGE_libtirpc=y
+CONFIG_PACKAGE_libnetfilter-conntrack=y
+CONFIG_PACKAGE_libnetfilter-cttimeout=y
+CONFIG_PACKAGE_libnetfilter-cthelper=y
+CONFIG_PACKAGE_libnetfilter-queue=y

@@ -1,0 +1,41 @@
+Subject: [PATCH] tools: always build host lzop/liblzo
+
+Vendor U-Boot configs enable CONFIG_MULTI_DTB_FIT_LZO=y
+(qca/src/u-boot/configs/ipq9574_*_defconfig and
+qca/src/u-boot-2025/configs/ipq9574_*_defconfig), so the U-Boot Makefile
+builds fit-dtb.blob.lzo by invoking the host `lzop` binary
+(qca/src/u-boot/Makefile:1168, qca/src/u-boot-2025/Makefile:1213).
+
+In this tree the host tools liblzo/lzop are only queued when
+CONFIG_BUILD_ALL_HOST_TOOLS is set (liblzo) or when CONFIG_SDK /
+CONFIG_TARGET_INITRAMFS_COMPRESSION_LZO is set (lzop).  Our minimal
+configuration has none of them, so both u-boot packages fail with:
+
+    /bin/sh: 1: lzop: not found
+    make[4]: *** [Makefile:1168: fit-dtb.blob.lzo] Error 127
+
+Enabling CONFIG_TARGET_INITRAMFS_COMPRESSION_LZO would change the
+initramfs image payload (currently COMPRESSION_NONE) and CONFIG_SDK
+changes far more of the build.  Build the two host tools unconditionally
+instead; this affects only host tools, not target/firmware contents.
+
+Observed on the first G3 build, 2026-10-21.
+
+---
+--- a/tools/Makefile
++++ b/tools/Makefile
+@@ -70,12 +70,12 @@
+ tools-y += xz
+ tools-y += zip
+ tools-y += zlib
+-tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS),y) += liblzo
++tools-y += liblzo
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_B43_TOOLS),y) += b43-tools
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_BZIP2_TOOLS),y) += bzip2
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_ISL),y) += isl
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_LZ4_TOOLS),y) += lz4
+-tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_LZO_TOOLS),y) += lzop
++tools-y += lzop
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(BUILD_TOOLCHAIN),y) += gmp mpc mpfr
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(CONFIG_TARGET_apm821xx)$(CONFIG_TARGET_gemini),y) += genext2fs
+ tools-$(if $(CONFIG_BUILD_ALL_HOST_TOOLS)$(CONFIG_TARGET_ath79),y) += lzma-old squashfs3-lzma

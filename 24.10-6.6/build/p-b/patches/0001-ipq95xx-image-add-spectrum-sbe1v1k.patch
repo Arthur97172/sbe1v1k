@@ -1,0 +1,63 @@
+From: P-B device definition staging <noreply@sbe1v1k-build>
+Subject: [PATCH 0001] ipq95xx: image: add Spectrum SBE1V1K device
+
+Adds the device definition for the Askey/Spectrum SBE1V1K
+(IPQ9574 + 3 x QCN9224).  Destination inside the build tree:
+target/linux/ipq95xx/image/generic.mk
+(i.e. oss-system-feeds-target-ipq/ipq95xx/image/generic.mk).
+
+Why each non-default value is set:
+
+  BUILD_DTS_ipq9574-sbe1v1k := 1
+      image.mk skips its own DTB compilation when this is set.  The DTS is
+      registered in the kernel's arch/arm64/boot/dts/qcom/Makefile by
+      patch 0002, so the kernel "dtbs" target compiles it exactly once.
+
+  KERNEL_LOADADDR := 0x42000000
+      Device/Default resolves to 0x40000000 because CONFIG_ENABLE_UBI_CORE is
+      not set for ipq95xx.  0x40000000 is the base of the 32 MiB
+      nss@40000000 reserved-memory window declared by the board DTS, so the
+      default would place the kernel inside a no-map reservation.
+      0x42000000 is the load address the Askey QSDK14 image uses for this
+      board (extracted/firmware-analysis-qsdk14/sysupgrade-askey_sbe1v1k).
+
+  IMAGE_SIZE := 96m
+      UNVERIFIED.  Vendor rootfs images measure 82.4 MiB (S1) and 52 MiB (S2);
+      96m is an upper bound that keeps the sysupgrade tar inside the largest
+      flash layout seen for this board.  Must be replaced with the real
+      partition size once it can be read from the device.
+
+  DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan
+      The board drives RGB LEDs and the fan through the IPQ9574 PWM
+      controller (vendor S1 DTB: pwm channels 0/1/2 for red/green/blue,
+      channel 3 for the fan).  CONFIG_PWM and CONFIG_PWM_IPQ are already =y
+      in ipq95xx/config-6.6; these two packages only add the consumer drivers.
+      No KEYBOARD_GPIO fragment is needed: kmod-gpio-button-hotplug (already
+      in DEFAULT_PACKAGES) replaces gpio_keys and clears its KCONFIG.
+
+--- a/ipq95xx/image/generic.mk
++++ b/ipq95xx/image/generic.mk
+@@ -120,0 +121,23 @@
++# Spectrum SBE1V1K (Askey): IPQ9574 + 3 x QCN9224.
++# DTS: arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dts, registered in the
++# kernel dts Makefile by patch 0002, hence BUILD_DTS_* := 1.
++# KERNEL_LOADADDR: Device/Default yields 0x40000000 here (CONFIG_ENABLE_UBI_CORE
++# is not set for ipq95xx), which overlaps the 32 MiB nss@40000000 window
++# reserved by the board DTS.  0x42000000 is what the Askey QSDK14 image uses.
++# IMAGE_SIZE: UNVERIFIED, see docs/PB_DEVICE_DEFINITION.md.
++define Device/spectrum_sbe1v1k
++	$(call Device/FitImageLzma)
++	DEVICE_VENDOR := Spectrum
++	DEVICE_MODEL := SBE1V1K
++	DEVICE_VARIANT :=
++	BOARD_NAME := spectrum_sbe1v1k
++	BUILD_DTS_ipq9574-sbe1v1k := 1
++	SOC := ipq9574
++	KERNEL_INSTALL := 1
++	KERNEL_LOADADDR := 0x42000000
++	KERNEL_SIZE := $(if $(CONFIG_DEBUG),8680k,7000k)
++	IMAGE_SIZE := 96m
++	DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan
++	IMAGE/sysupgrade.bin := append-kernel | pad-to $$$$(KERNEL_SIZE) | append-rootfs | pad-rootfs | append-metadata
++endef
++TARGET_DEVICES += spectrum_sbe1v1k

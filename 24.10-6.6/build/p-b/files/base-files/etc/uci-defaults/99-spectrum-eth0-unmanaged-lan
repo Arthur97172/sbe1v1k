@@ -1,0 +1,38 @@
+#!/bin/sh
+#
+# P-B staging draft.  Adapted from the vendor file
+# extracted/rootfs/etc/uci-defaults/99-spectrum-eth0-unmanaged-lan-v4312.
+#
+# Differences from the vendor file:
+#   - version suffix dropped;
+#   - the vendor-only services lan-client-renew and factory-eth-led are not
+#     enabled: they ship with closed vendor packages that are not part of the
+#     QSDK/OpenWrt package set (LICENSE_REVIEW_REQUIRED);
+#   - the obsolete lan-apply-watch removal is kept, because a preserved
+#     overlay from the stock firmware would otherwise re-add eth0 to br-lan.
+
+[ "$(board_name 2>/dev/null)" = "spectrum,sbe1v1k" ] || exit 0
+
+. /lib/functions.sh
+
+remove_eth0_from_br_lan() {
+	local section="$1"
+	local name
+
+	config_get name "$section" name
+	[ "$name" = "br-lan" ] || return 0
+	uci -q del_list "network.$section.ports=eth0"
+}
+
+config_load network
+config_foreach remove_eth0_from_br_lan device
+uci -q commit network
+
+# Remove the obsolete helper even when it survived in a preserved overlay.
+/etc/init.d/lan-apply-watch stop 2>/dev/null
+/etc/init.d/lan-apply-watch disable 2>/dev/null
+rm -f /etc/init.d/lan-apply-watch /usr/sbin/lan-apply-watch
+
+/etc/init.d/eth0-lan-attach enable
+
+exit 0

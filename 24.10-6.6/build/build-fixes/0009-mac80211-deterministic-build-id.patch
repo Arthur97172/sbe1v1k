@@ -1,0 +1,47 @@
+Subject: [PATCH] mac80211: derive PKG_BUILD_ID from SOURCE_DATE_EPOCH
+
+Both mac80211 packages used a timestamp as the module build-id seed:
+
+    PKG_BUILD_ID:=$(shell date | $(MKHASH) md5)
+
+The value is passed to the linker through include/kernel.mk:120
+(LDFLAGS_MODULE=--build-id=0x$(PKG_BUILD_ID)) and lands as the 16-byte
+.note.gnu.build-id of every module built by the package.  Because `date`
+returns wall-clock time at parse time, two clean builds of the same tree
+produce different module bytes (measured: 9 ipks, 16 bytes each at file
+offset 81-96; see docs/G35C_REPRODUCIBILITY.md section 3.4).
+
+Seed it from SOURCE_DATE_EPOCH instead, which include/toplevel.mk already
+exports as a fixed value (scripts/get_source_date_epoch.sh).  PKG_SOURCE_DATE_EPOCH
+is kept as a fallback for the (unlikely) case of parsing without TOPDIR.
+If both are empty the seed is still constant, so the build-id remains
+reproducible.
+
+This changes binary contents (only the build-id note) once; it does not
+change any compiled code, vermagic, or package metadata.
+
+Observed during the G3.5 reproducibility verification, 2026-10-21.
+
+---
+--- a/package/kernel/mac80211/Makefile
++++ b/package/kernel/mac80211/Makefile
+@@ -23,7 +23,7 @@
+ PKG_BUILD_PARALLEL:=1
+
+ MKHASH ?= $(STAGING_DIR_HOST)/bin/mkhash
+-PKG_BUILD_ID:=$(shell date | $(MKHASH) md5)
++PKG_BUILD_ID:=$(shell echo $(if $(SOURCE_DATE_EPOCH),$(SOURCE_DATE_EPOCH),$(PKG_SOURCE_DATE_EPOCH)) | $(MKHASH) md5)
+ PKG_MAINTAINER:=Felix Fietkau <nbd@nbd.name>
+
+ PKG_DRIVERS = \
+--- a/qca/feeds/wlan-open/mac80211/Makefile
++++ b/qca/feeds/wlan-open/mac80211/Makefile
+@@ -35,7 +35,7 @@
+ PKG_BUILD_PARALLEL:=1
+
+ MKHASH ?= $(STAGING_DIR_HOST)/bin/mkhash
+-PKG_BUILD_ID:=$(shell date | $(MKHASH) md5)
++PKG_BUILD_ID:=$(shell echo $(if $(SOURCE_DATE_EPOCH),$(SOURCE_DATE_EPOCH),$(PKG_SOURCE_DATE_EPOCH)) | $(MKHASH) md5)
+
+ ifeq (y, $(filter y, $(CONFIG_TARGET_echo) $(CONFIG_TARGET_sdx85)))
+ 	SRCPREFIX:=

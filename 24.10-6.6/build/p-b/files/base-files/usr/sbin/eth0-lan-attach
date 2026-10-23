@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# RTL8261N/dp1 enters a false 10G loopback state if netifd tears eth0 down
+# while applying a LAN address change.  Keep eth0 outside netifd's bridge
+# port list and attach it after br-lan exists, without resetting the PHY/MAC.
+while sleep 1; do
+	[ -e /sys/class/net/eth0 ] || continue
+	[ -e /sys/class/net/br-lan ] || continue
+
+	master="$(basename "$(readlink -f /sys/class/net/eth0/master 2>/dev/null)" 2>/dev/null)"
+	[ "$master" = "br-lan" ] && continue
+
+	ip link set dev eth0 up 2>/dev/null
+	ip link set dev eth0 master br-lan 2>/dev/null
+done

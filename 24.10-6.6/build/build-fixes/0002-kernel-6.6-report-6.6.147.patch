@@ -1,0 +1,21 @@
+From: SBE1V1K build fixes <noreply@sbe1v1k-build>
+Subject: [PATCH 0002] include: kernel-6.6: report the pinned 6.6.147 source version
+
+The assembled build tree uses the manifest-pinned linux-ipq-6.6 tree
+(6.6.147, a1f20340783f0a0fa44c6ca7876a78b59fde77f3) as the external
+flattened kernel source, but include/kernel-6.6 still carried the QSDK
+14.0.1595.1670 value ".116".  Its LINUX_VERSION is what OpenWrt passes
+to kbuild as KERNELRELEASE and what names /lib/modules/<ver>, so leaving
+it at .116 would produce a system whose kernel identifies itself as
+6.6.116 while the source is 6.6.147.
+
+LINUX_KERNEL_HASH is only consumed by the tarball download path, which
+the flattened (CONFIG_EXTERNAL_KERNEL_TREE) build never takes; the stale
+6.6.116 hash line is therefore harmless and left untouched.
+
+--- a/include/kernel-6.6
++++ b/include/kernel-6.6
+@@ -1,2 +1,2 @@
+-LINUX_VERSION-6.6 = .116
++LINUX_VERSION-6.6 = .147
+ LINUX_KERNEL_HASH-6.6.116 = a9a59742c29be284c205dc87cbe9b065f9688488132c8f5a6057a5539230a51d

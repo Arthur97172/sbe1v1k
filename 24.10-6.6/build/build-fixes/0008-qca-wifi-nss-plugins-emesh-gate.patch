@@ -1,0 +1,12 @@
+--- a/qca/feeds/wlan-open/mac80211/qca-wifi-nss-plugins/Makefile
++++ b/qca/feeds/wlan-open/mac80211/qca-wifi-nss-plugins/Makefile
+@@ -61,7 +61,9 @@
+ ifeq ($(CONFIG_TARGET_echo_cpe),y)
+ MAKE_OPTS+=QCA_WIFI_NSS_PLUGINS_IPA_FSE=y
+ else
++ifneq ($(CONFIG_PACKAGE_kmod-emesh-sp),)
+ MAKE_OPTS+=QCA_WIFI_NSS_PLUGINS_ECM_EMESH=y
++endif
+ MAKE_OPTS+=QCA_WIFI_NSS_PLUGINS_ECM_FSE=y
+ MAKE_OPTS+=QCA_WIFI_NSS_PLUGINS_ECM_NL=y
+ MAKE_OPTS+=QCA_WIFI_NSS_PLUGINS_ECM_WIFI_CLASSIFIER=y

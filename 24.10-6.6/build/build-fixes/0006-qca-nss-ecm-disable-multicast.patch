@@ -1,0 +1,18 @@
+--- a/qca/feeds/nss/clients/qca-nss-ecm/Makefile
++++ b/qca/feeds/nss/clients/qca-nss-ecm/Makefile
+@@ -287,7 +287,14 @@
+ 
+ ECM_MAKE_OPTS+=ECM_FRONT_END_FSE_ENABLE=y
+ ECM_MAKE_OPTS+=ECM_CLASSIFIER_MSCS_ENABLE=y
+-ECM_MAKE_OPTS+=ECM_MULTICAST_ENABLE=y
++
++# SBE1V1K build fix 0006: the feed enables ECM multicast unconditionally,
++# but the vendor image was built without it.  Its ecm.ko contains no
++# ecm_db_multicast/ecm_*_multicast objects, no br_mcast_offload_*
++# references and no snooper strings, whereas enabling this option also
++# pulls in frontends/{cmn,sfe}/ecm_*_multicast_*.o and the bridge
++# snooper hooks.  Match the vendor image; re-enable only on request.
++# ECM_MAKE_OPTS+=ECM_MULTICAST_ENABLE=y
+ 
+ ifeq ($(CONFIG_PACKAGE_kmod-qca-mcs), y)
+ EXTRA_CFLAGS+= -I$(STAGING_DIR)/usr/include/qca-mcs

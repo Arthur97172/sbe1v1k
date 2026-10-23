@@ -1,0 +1,36 @@
+From: SBE1V1K build fixes <noreply@sbe1v1k-build>
+Subject: [PATCH] kernel: linux: drop duplicate KernelPackage/ip6-vti stanza
+
+netsupport.mk in the QSDK 14 base tree defines KernelPackage/ip6-vti
+twice.  Kconfig rejects the generated tmp/.config-package.in with
+"recursive dependency detected!" (PACKAGE_kmod-ip6-vti selects itself).
+The two blocks are not identical: the later one drops the IPv6
+"DEPENDS:=@IPV6" guard.  The first block matches upstream OpenWrt and is
+kept; the later duplicate is removed.
+
+Apply from the buildroot top:  patch -p1 < 0001-...
+
+--- a/package/kernel/linux/modules/netsupport.mk
++++ b/package/kernel/linux/modules/netsupport.mk
+@@ -359,21 +359,6 @@
+ 
+ $(eval $(call KernelPackage,xfrm-interface))
+ 
+-define KernelPackage/ip6-vti
+- SUBMENU:=$(NETWORK_SUPPORT_MENU)
+-  TITLE:=IPv6 VTI (Virtual Tunnel Interface)
+-  DEPENDS:=+kmod-iptunnel +kmod-ip6-tunnel +kmod-ipsec6
+-  KCONFIG:=CONFIG_IPV6_VTI
+-  FILES:=$(LINUX_DIR)/net/ipv6/ip6_vti.ko
+-  AUTOLOAD:=$(call AutoLoad,33,ip6_vti)
+-endef
+-
+-define KernelPackage/ip6-vti/description
+-   Kernel modules for IPv6 VTI (Virtual Tunnel Interface)
+-endef
+-$(eval $(call KernelPackage,ip6-vti))
+-
+-
+ define KernelPackage/iptunnel4
+   SUBMENU:=$(NETWORK_SUPPORT_MENU)
+   TITLE:=IPv4 tunneling

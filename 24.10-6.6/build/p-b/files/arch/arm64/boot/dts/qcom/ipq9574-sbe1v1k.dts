@@ -1,0 +1,748 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR BSD-3-Clause)
+/*
+ * Spectrum SBE1V1K (Askey) - IPQ9574 + 3 x QCN9224
+ *
+ * STAGED DRAFT.  This file has NOT been applied to sources/, has never been
+ * built with make, and has never been booted.  It exists so the device
+ * definition can be reviewed before the build stage is approved.
+ *
+ * Evidence tags used below:
+ *   RD = arch/arm64/boot/dts/qcom/ipq9574-rdp433.dts
+ *        (oss-kernel-linux-ipq-files, the reference board for this target)
+ *   DS = ipq9574.dtsi / ipq9574-qcn9224-default-memory.dtsi
+ *   S1 = Spectrum product DTB extracted from the vendor firmware (QSDK 13,
+ *        Linux 6.6.47) - extracted/kernel/sbe1v1k.dtb
+ *   S2 = Askey QSDK-14 DTB extracted from the reference firmware
+ *        (Linux 6.6.116, this ath12k generation) -
+ *        extracted/qsdk14/sbe1v1k-askey.dtb
+ *   NET = base-files/etc/board.d/01_network from the vendor rootfs
+ *
+ * See docs/PB_DEVICE_DEFINITION.md for the per-value evidence table and for
+ * the list of values that remain UNVERIFIED.
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/leds/common.h>
+#include "ipq9574.dtsi"
+#include "ipq9574-qcn9224-default-memory.dtsi"
+
+/ {
+	/* S1: "Spectrum SBE1V1K ( Wi-Fi 7 320MHZ )"; shortened, no changed meaning */
+	model = "Spectrum SBE1V1K";
+
+	/*
+	 * The first string is what /lib/preinit/02_sysinfo writes to
+	 * /tmp/sysinfo/board_name (strings /proc/device-tree/compatible | head -1),
+	 * and every board.d branch in the vendor rootfs keys on it (S1, NET).
+	 */
+	compatible = "spectrum,sbe1v1k", "qcom,ipq9574-ap-al02-c4",
+		     "qcom,ipq9574-al02", "qcom,ipq9574";
+
+	aliases {
+		/* Console.  DS defines serial0..2 nowhere; RD does it this way. */
+		serial0 = &blsp1_uart2;
+
+		/*
+		 * Documentation only: nss_dp_main.c never calls of_alias_get_id(),
+		 * so ethN are assigned by DT probe order (see the dp nodes below).
+		 * RD's "/soc/dpN" strings no longer resolve (the node is soc@0).
+		 */
+		ethernet0 = &dp1;	/* 10G   RTL8261N  */
+		ethernet1 = &dp2;	/* 2.5G  QCA8081   */
+		ethernet2 = &dp3;	/* 1G    qca8075   */
+		ethernet3 = &dp4;	/* 1G    qca8075   */
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+
+		/*
+		 * S1 carries the same option.  S1 also appends
+		 * "cnss2.enable_mlo_support=1", which only applies to the qcawifi
+		 * stack and is deliberately not carried over.
+		 *
+		 * RD's "pcie_pme=nomsi" is NOT copied: the vendor product DTB (S1)
+		 * does not set it, so it is not part of this board's boot contract.
+		 */
+		bootargs-append = " fstools_ignore_partname=1";
+	};
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * Reserved memory
+ * ---------------------------------------------------------------------------
+ */
+
+/*
+ * DS emits nss@40000000 only under #if defined(__IPQ_PROFILE_MINENT__), which
+ * no target in this tree defines.  S1 proves the vendor reserves it and the
+ * NSS firmware requires it.  32 MB at 0x40000000..0x42000000 is the reason
+ * Device/spectrum_sbe1v1k must set KERNEL_LOADADDR := 0x42000000; the target's
+ * Device/Default falls back to 0x40000000 because CONFIG_ENABLE_UBI_CORE is
+ * not a defined symbol anywhere.
+ */
+&{/reserved-memory} {
+	nss@40000000 {
+		no-map;
+		reg = <0x0 0x40000000 0x0 0x2000000>;
+		status = "okay";
+	};
+
+	/*
+	 * DS ships three 36 MB windows whose node names encode the default base
+	 * addresses.  S2 (the same board, same driver generation) uses 64 MB
+	 * windows at 0x50100000 / 0x54100000 / 0x58100000 but left the node unit
+	 * addresses at the old values.  The nodes are deleted and redeclared so
+	 * the unit address matches reg.
+	 *
+	 * Why the region base and size are what matters, and the cnss-node
+	 * base-addr/caldb-addr properties are not: ath12k looks the region up by
+	 * name ("host-ddr-mem", ath12k/core.c: ath12k_core_get_reserved_mem_by_name)
+	 * and then lays out every firmware chunk sequentially from its base
+	 * (ath12k/qmi.c: ab->qmi.target_mem[idx].paddr = ddr_rmem->base + sz).
+	 * Nothing in ath12k reads base-addr / hremote-size.
+	 */
+	/delete-node/ qcn9224_pcie1@50100000;
+	/delete-node/ qcn9224_pcie2@52500000;
+	/delete-node/ qcn9224_pcie3@54900000;
+
+	qcn9224_pcie1: qcn9224_pcie1@50100000 {
+		no-map;
+		reg = <0x0 0x50100000 0x0 0x4000000>;
+		status = "okay";
+	};
+
+	qcn9224_pcie2: qcn9224_pcie2@54100000 {
+		no-map;
+		reg = <0x0 0x54100000 0x0 0x4000000>;
+		status = "okay";
+	};
+
+	qcn9224_pcie3: qcn9224_pcie3@58100000 {
+		no-map;
+		reg = <0x0 0x58100000 0x0 0x4000000>;
+		status = "okay";
+	};
+};
+
+/*
+ * mhi_region1..3 stay disabled, exactly as in RD and S2: RD only enables them
+ * under __MHI_BUS_RESERVED_DMA_POOL__, a macro no build in this tree defines.
+ */
+
+/* S2 and RD both enable this one. */
+&mlo_global_mem0 {
+	status = "okay";
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * Console
+ * ---------------------------------------------------------------------------
+ */
+
+&blsp1_uart2 {
+	pinctrl-0 = <&uart2_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * Ethernet: MDIO, PHYs, switch, nss-dp
+ * ---------------------------------------------------------------------------
+ */
+
+/* S1: two reset lines, tlmm 60 (qca8075) and tlmm 52 (RTL8261N). */
+&mdio {
+	pinctrl-0 = <&mdio_pins>;
+	pinctrl-names = "default";
+	phy-reset-gpio = <&tlmm 60 GPIO_ACTIVE_LOW &tlmm 52 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	ethernet-phy-package@0 {
+		compatible = "qcom,qca8075-package";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		reg = <0x10>;
+		qcom,package-mode = "qsgmii";
+
+		sw_phy0: ethernet-phy@10 {
+			reg = <0x10>;
+		};
+
+		sw_phy1: ethernet-phy@11 {
+			reg = <0x11>;
+		};
+
+		sw_phy2: ethernet-phy@12 {
+			reg = <0x12>;
+		};
+
+		sw_phy3: ethernet-phy@13 {
+			reg = <0x13>;
+		};
+	};
+
+	/* QCA8081 2.5G, S1 reg 0x1c */
+	sw_phy4: ethernet-phy@1c {
+		reg = <0x1c>;
+	};
+
+	/* RTL8261N 10G, C45, S1 reg 0x00 */
+	sw_phy5: ethernet-phy@0 {
+		compatible = "ethernet-phy-ieee802.3-c45";
+		reg = <0x0>;
+	};
+};
+
+&ess_switch {
+	switch_cpu_bmp = <0x1>;
+	switch_inner_bmp = <0x80>;
+	/* S1/NET: port 5 is WAN; ports 3, 4 and 6 are LAN (0x58 = BIT(3)|BIT(4)|BIT(6)) */
+	switch_lan_bmp = <0x58>;
+	switch_wan_bmp = <0x20>;
+	/* S1: QSGMII / SGMII_CHANNEL0 / USXGMII */
+	switch_mac_mode = <0x0b>;
+	switch_mac_mode1 = <0x0f>;
+	switch_mac_mode2 = <0x0d>;
+	bm_tick_mode = <0>;
+	tm_tick_mode = <0>;
+
+	qcom,port_phyinfo {
+		port@0 {
+			port_id = <1>;
+			phy_address = <0x10>;
+			phy-handle = <&sw_phy0>;
+			phy-mode = "qsgmii";
+		};
+
+		port@1 {
+			port_id = <2>;
+			phy_address = <0x11>;
+			phy-handle = <&sw_phy1>;
+			phy-mode = "qsgmii";
+		};
+
+		port@2 {
+			port_id = <3>;
+			phy_address = <0x12>;
+			phy-handle = <&sw_phy2>;
+			phy-mode = "qsgmii";
+		};
+
+		port@3 {
+			port_id = <4>;
+			phy_address = <0x13>;
+			phy-handle = <&sw_phy3>;
+			phy-mode = "qsgmii";
+		};
+
+		port@4 {
+			port_id = <5>;
+			phy_address = <0x1c>;
+			phy-handle = <&sw_phy4>;
+			phy-mode = "sgmii";
+			port_mac_sel = "QGMAC_PORT";
+		};
+
+		port@5 {
+			port_id = <6>;
+			phy_address = <0x0>;
+			phy-handle = <&sw_phy5>;
+			phy-mode = "usxgmii";
+			ethernet-phy-ieee802.3-c45;
+		};
+	};
+
+	/* S1: QCA8081 LED sources for port 5; parsed by ssdk_dt_parse_port_ledinfo */
+	qcom,port_ledinfo {
+		port5 {
+			port = <5>;
+
+			led_source@f {
+				source = <0xf>;
+				mode = "normal";
+				speed = "all";
+				blink_en = "enable";
+				freq = "auto";
+				active = "low";
+			};
+
+			led_source@10 {
+				source = <0x10>;
+				mode = "normal";
+				speed = "all";
+				blink_en = "enable";
+				freq = "auto";
+				active = "low";
+			};
+		};
+	};
+};
+
+/*
+ * nss-dp probe order defines ethN: probe order is DT order, and
+ * alloc_etherdev_mqs() hands out eth%d sequentially (nss_dp_main.c:1133).
+ * The order below reproduces the vendor mapping recorded in NET:
+ *   eth0 = dp1 = port 6 = RTL8261N 10G   (attached to br-lan by eth0-lan-attach)
+ *   eth1 = dp2 = port 5 = QCA8081 2.5G   (wan)
+ *   eth2 = dp3 = port 3 = qca8075        (lan)
+ *   eth3 = dp4 = port 4 = qca8075        (lan)
+ *
+ * phy-mode is deliberately absent on every dp node.  of_get_phy_mode() fails,
+ * which sets phylink_en = true (nss_dp_main.c:891 -- the sense of that branch
+ * is inverted relative to a normal success check), and ssdk_port_phylink_setup()
+ * then takes the interface type and phy-handle from qcom,port_phyinfo above.
+ * This is RD's arrangement.  S1 instead put phy-mode/qcom,phy-mdio-addr on the
+ * dp nodes, which selects the legacy phy_connect() path in a driver generation
+ * this build does not use.
+ *
+ * mactype: 0 = qcom_gmac_ops (1G GMAC), 1 = syn_gmac_ops (Synopsys XGMAC).
+ * For ipq95xx only hal/gmac_ops/qcom/qcom_if.o and hal/gmac_ops/syn/xgmac/syn_if.o
+ * are linked (oss-lklm-nss-dp/Makefile), and nss_ipq95xx.c registers exactly
+ * those two types.  Port 6 is USXGMII and therefore needs the XGMAC base
+ * (0x3a514000) with mactype 1.  S2 -- the QSDK-14 build for this same board,
+ * i.e. the driver generation this tree uses -- pairs dp1 id 6 / 0x3a514000 with
+ * mactype 1.  S1 pairs that base with mactype 0, which is an artifact of its
+ * older driver.  RD has no XGMAC port (its dp1 is port 1 at 0x3a001000,
+ * mactype 0), so it is not evidence either way for port 6.
+ *
+ * qcom,ppe-offload-disabled is deliberately NOT copied from RD's dp1..dp4:
+ * NSS/PPE offload is a requirement for this build.
+ */
+&soc {
+	dp1: dp1 {
+		device_type = "network";
+		compatible = "qcom,nss-dp";
+		qcom,id = <6>;
+		reg = <0x3a514000 0x4000>;
+		qcom,mactype = <1>;
+		local-mac-address = [00 00 00 00 00 00];
+	};
+
+	dp2: dp2 {
+		device_type = "network";
+		compatible = "qcom,nss-dp";
+		qcom,id = <5>;
+		reg = <0x3a001800 0x200>;
+		qcom,mactype = <0>;
+		local-mac-address = [00 00 00 00 00 00];
+	};
+
+	dp3: dp3 {
+		device_type = "network";
+		compatible = "qcom,nss-dp";
+		qcom,id = <3>;
+		reg = <0x3a001400 0x200>;
+		qcom,mactype = <0>;
+		local-mac-address = [00 00 00 00 00 00];
+	};
+
+	dp4: dp4 {
+		device_type = "network";
+		compatible = "qcom,nss-dp";
+		qcom,id = <4>;
+		reg = <0x3a001600 0x200>;
+		qcom,mactype = <0>;
+		local-mac-address = [00 00 00 00 00 00];
+	};
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * PCIe / Wi-Fi: three QCN9224 behind the WSI ring
+ * ---------------------------------------------------------------------------
+ */
+
+&pcie1_phy {
+	status = "okay";
+};
+
+&pcie2_phy {
+	status = "okay";
+};
+
+&pcie3_phy {
+	status = "okay";
+};
+
+/* RD and S2 carry identical chip_info */
+&wsi {
+	id = <0>;
+	num_chip = <3>;
+	status = "okay";
+	chip_info = <0 2 1 2>,
+		    <1 2 2 0>,
+		    <2 2 0 1>;
+};
+
+/*
+ * The wifi@0 property sets below are S2's, and S2's board_id/caldata_offset
+ * values are identical to RD's, which is independent confirmation that they
+ * describe this hardware and not a reference board:
+ *   pcie1 -> wifi5, board_id 1, wsi_index 2, caldata 0x58800
+ *   pcie2 -> wifi6, board_id 4, wsi_index 0, caldata 0x8a800 (WSI controller)
+ *   pcie3 -> wifi7, board_id 2, wsi_index 1, caldata 0xbc800
+ * qcom,caldata_offset is consumed by U-Boot's fdt_fixup
+ * (oss-boot-u-boot/board/qti/common/fdt_fixup.c:410), not by the kernel.
+ *
+ * qcom,early_cal_enabled = "disabled" on all three follows S2.  RD marks the
+ * second and third controllers "supported"; S2 is the same board, so S2 wins.
+ *
+ * The memory-region phandles point at mhi_regionN even though those pools stay
+ * disabled -- S2 and RD both do this; ath12k only resolves host-ddr-mem and
+ * mlo-global-mem by name.
+ */
+
+&pcie1_x1 {
+	perst-gpios = <&tlmm 26 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	pcie@0 {
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+
+		wifi@0 {
+			boot-args = <0x2 0x4 0x34 0x3 0x0 0x0
+				     0x4 0x4 0x18 0x3 0x0 0x0
+				     0x0 0x4 0x0 0x0 0x0 0x0>;
+			memory-region = <&qcn9224_pcie1>, <&mhi_region1>, <&mlo_global_mem0>;
+			memory-region-names = "host-ddr-mem", "mhi-region", "mlo-global-mem";
+			reg = <0x0 0x0 0x0 0x0 0x0>;
+			qcom,early_cal_enabled = "disabled";
+			qcom,caldata_offset = <0x58800>;
+			qcom,caldb_offset = <0x1100000>;
+			qcom,caldb_size = <0x800000>;
+			qcom,board_id = <0x01>;
+			qcom,wsi = <&wsi>;
+			qcom,wsi_index = <2>;
+			qcom,pta-num = <0>;
+			qcom,coex-mode = <0x2>;
+			qcom,bt-active-time = <0x18>;
+			qcom,bt-priority-time = <0x12>;
+			qcom,coex-algo = <0x2>;
+			qcom,pta-priority = <0x80800505>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					wifi1_wsi_tx: endpoint {
+						remote-endpoint = <&wifi2_wsi_rx>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					wifi1_wsi_rx: endpoint {
+						remote-endpoint = <&wifi3_wsi_tx>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&pcie2_x2 {
+	perst-gpios = <&tlmm 29 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	pcie@0 {
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+
+		wifi@0 {
+			boot-args = <0x2 0x4 0x34 0x3 0x0 0x0
+				     0x4 0x4 0x18 0x3 0x0 0x0
+				     0x0 0x4 0x0 0x0 0x0 0x0>;
+			memory-region = <&qcn9224_pcie2>, <&mhi_region2>, <&mlo_global_mem0>;
+			memory-region-names = "host-ddr-mem", "mhi-region", "mlo-global-mem";
+			reg = <0x0 0x0 0x0 0x0 0x0>;
+			qcom,early_cal_enabled = "disabled";
+			qcom,caldata_offset = <0x8a800>;
+			qcom,caldb_offset = <0x1100000>;
+			qcom,caldb_size = <0x800000>;
+			qcom,board_id = <0x04>;
+			qcom,wsi = <&wsi>;
+			qcom,wsi_index = <0>;
+			qcom,wsi-controller;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					wifi2_wsi_tx: endpoint {
+						remote-endpoint = <&wifi3_wsi_rx>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					wifi2_wsi_rx: endpoint {
+						remote-endpoint = <&wifi1_wsi_tx>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&pcie3_x2 {
+	perst-gpios = <&tlmm 32 GPIO_ACTIVE_LOW>;
+	status = "okay";
+
+	pcie@0 {
+		device_type = "pci";
+		reg = <0x0 0x0 0x0 0x0 0x0>;
+		#address-cells = <3>;
+		#size-cells = <2>;
+		ranges;
+
+		wifi@0 {
+			boot-args = <0x2 0x4 0x34 0x3 0x0 0x0
+				     0x4 0x4 0x18 0x3 0x0 0x0
+				     0x0 0x4 0x0 0x0 0x0 0x0>;
+			memory-region = <&qcn9224_pcie3>, <&mhi_region3>, <&mlo_global_mem0>;
+			memory-region-names = "host-ddr-mem", "mhi-region", "mlo-global-mem";
+			reg = <0x0 0x0 0x0 0x0 0x0>;
+			qcom,early_cal_enabled = "disabled";
+			qcom,caldata_offset = <0xbc800>;
+			qcom,caldb_offset = <0x1100000>;
+			qcom,caldb_size = <0x800000>;
+			qcom,board_id = <0x02>;
+			qcom,wsi = <&wsi>;
+			qcom,wsi_index = <1>;
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					wifi3_wsi_tx: endpoint {
+						remote-endpoint = <&wifi1_wsi_rx>;
+					};
+				};
+
+				port@1 {
+					reg = <1>;
+
+					wifi3_wsi_rx: endpoint {
+						remote-endpoint = <&wifi2_wsi_tx>;
+					};
+				};
+			};
+		};
+	};
+};
+
+&wifi5 {
+	hremote_node = <&qcn9224_pcie1>;
+	board_id = <0x01>;
+	hw_link_id = <0 0>;
+	status = "okay";
+};
+
+&wifi6 {
+	hremote_node = <&qcn9224_pcie2>;
+	board_id = <0x04>;
+	hw_link_id = <1 0>;
+	status = "okay";
+};
+
+&wifi7 {
+	hremote_node = <&qcn9224_pcie3>;
+	board_id = <0x02>;
+	hw_link_id = <2 0>;
+	status = "okay";
+};
+
+/*
+ * The DS cnss nodes still describe the 36 MB layout at
+ * 0x50100000 / 0x52500000 / 0x54900000.  ath12k ignores these properties (see
+ * the reserved-memory comment), but they are kept consistent with the 64 MB
+ * regions so that no consumer -- current or legacy -- reads a stale address.
+ * The arithmetic is base + 0x1100000 (hremote) / 0x800000 (caldb) /
+ * 0x100000 (m3 dump) / 0x100000 (etr) / 0x900000 (pageable) = base + 42 MB,
+ * inside the 64 MB region.
+ *
+ * NOTE: these overrides are unconditional and therefore assume the default
+ * (non-512 MB) memory profile.  __IPQ_MEM_PROFILE_512_MB__ must not be defined
+ * for this device.
+ */
+&wifi5 {
+	base-addr = <0x50100000>;
+	caldb-addr = <0x51200000>;
+	m3-dump-addr = <0x51a00000>;
+	etr-addr = <0x51b00000>;
+	pageable-addr = <0x51c00000>;
+};
+
+&wifi6 {
+	base-addr = <0x54100000>;
+	caldb-addr = <0x55200000>;
+	m3-dump-addr = <0x55a00000>;
+	etr-addr = <0x55b00000>;
+	pageable-addr = <0x55c00000>;
+};
+
+&wifi7 {
+	base-addr = <0x58100000>;
+	caldb-addr = <0x59200000>;
+	m3-dump-addr = <0x59a00000>;
+	etr-addr = <0x59b00000>;
+	pageable-addr = <0x59c00000>;
+};
+
+/*
+ * ---------------------------------------------------------------------------
+ * Buttons, LEDs, fan
+ * ---------------------------------------------------------------------------
+ */
+
+&tlmm {
+	button_pins: button-pins {
+		pins = "gpio54";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-pull-up;
+	};
+
+	/*
+	 * S1's pwm_pinmux.  The four "pwm" entries prove which pads are routed to
+	 * the PWM block; they do NOT prove which PWM channel drives which pad.
+	 * gpio40 is configured by the vendor as a pulled-up GPIO inside the same
+	 * state and is reproduced here as-is.
+	 */
+	pwm_pins: pwm-pins {
+		mux_red {
+			pins = "gpio44";
+			function = "pwm";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mux_green {
+			pins = "gpio45";
+			function = "pwm";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mux_blue {
+			pins = "gpio56";
+			function = "pwm";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mux_fan {
+			pins = "gpio53";
+			function = "pwm";
+			drive-strength = <8>;
+			bias-disable;
+		};
+
+		mux_5 {
+			pins = "gpio40";
+			function = "gpio";
+			drive-strength = <8>;
+			bias-pull-up;
+		};
+	};
+};
+
+&pwm {
+	pinctrl-0 = <&pwm_pins>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&soc {
+	/*
+	 * S1 labels this button "wps" with linux,code = KEY_WPS_BUTTON, but its
+	 * pinmux group is called "reset_button".  Which function the physical
+	 * button really has is UNVERIFIED; see docs/PB_DEVICE_DEFINITION.md.
+	 */
+	gpio_keys {
+		compatible = "gpio-keys";
+		pinctrl-0 = <&button_pins>;
+		pinctrl-names = "default";
+		status = "okay";
+
+		button@1 {
+			label = "wps";
+			linux,code = <KEY_WPS_BUTTON>;
+			gpios = <&tlmm 54 GPIO_ACTIVE_LOW>;
+			linux,input-type = <1>;
+			debounce-interval = <60>;
+		};
+	};
+
+	/*
+	 * The vendor disables leds-gpio and drives /sys/class/pwm/pwmchip0 from
+	 * a Go daemon (usr/bin/factory-pwm).  A pwm-leds node is the in-kernel
+	 * equivalent.  Channel assignment (0=red, 1=green, 2=blue) is UNVERIFIED;
+	 * only channel 3 -> fan is proven, by S1's pwm-fan node.  A wrong channel
+	 * mapping is cosmetic; it cannot damage the board.
+	 */
+	leds {
+		compatible = "pwm-leds";
+
+		led-red {
+			label = "red:system";
+			pwms = <&pwm 0 40000 0>;
+			default-state = "off";
+		};
+
+		led-green {
+			label = "green:system";
+			pwms = <&pwm 1 40000 0>;
+			default-state = "off";
+		};
+
+		led-blue {
+			label = "blue:system";
+			pwms = <&pwm 2 40000 0>;
+			default-state = "off";
+		};
+	};
+
+	/*
+	 * S1 verbatim: channel 3, 40 us period, four cooling levels.
+	 *
+	 * There is no cooling-device link to a thermal zone anywhere in DS/RD/S1,
+	 * so with this node alone the fan stays at cooling level 0 (off) unless
+	 * userspace drives /sys/class/hwmon/hwmonX/pwm1.  The vendor fills that
+	 * gap with its Go daemon.  This build has no equivalent yet -- tracked as
+	 * a P-C deliverable and a thermal-safety item in the device-definition doc.
+	 */
+	pwm-fan {
+		compatible = "pwm-fan";
+		cooling-min-state = <0>;
+		cooling-max-state = <3>;
+		pwms = <&pwm 3 40000 0>;
+		cooling-levels = <0 0x55 0xaa 0xff>;
+		#cooling-cells = <2>;
+	};
+};

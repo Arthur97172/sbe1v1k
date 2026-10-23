@@ -1,0 +1,31 @@
+# 仓库只保存编译输入：24.10-6.6/（overlay、构建/CI 脚本）与 .github/workflows/build.yml。
+# 以下内容只在本机存在，不进 git。
+
+# 装配源码树与构建产物（约 24 GB）
+/sources/
+/dist/
+/firmware/
+/extracted/
+/logs/
+/build/
+
+# 本机审计与测试资料
+/scripts/
+/docs/
+/files/
+/banner
+/99-wireless-defaults
+/README.md
+/CLAUDE.md
+/CLAUDE_BUILD_GUIDE.md
+/.claude/
+
+# 宿主机垫片软链由脚本按清单重建（本机指向 /usr/bin/gnu*，runner 上没有）
+/24.10-6.6/build/host-bin/
+
+# 签名材料与备份
+key-build
+key-build.*
+*.ucert
+*.bak
+*.log
