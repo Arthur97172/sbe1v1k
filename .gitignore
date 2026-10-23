@@ -1,4 +1,4 @@
-# 仓库只保存编译输入：24.10-6.6/（overlay、构建/CI 脚本）与 .github/workflows/build-24.10-6.6.yml。
+# 仓库只保存编译输入：24.10-6.6/、25.12-6.12/ 与对应的 workflow。
 # 以下内容只在本机存在，不进 git。
 
 # 装配源码树与构建产物（约 24 GB）
@@ -22,6 +22,7 @@
 
 # 宿主机垫片软链由脚本按清单重建（本机指向 /usr/bin/gnu*，runner 上没有）
 /24.10-6.6/build/host-bin/
+/25.12-6.12/build/host-bin/
 
 # 签名材料与备份
 key-build

@@ -1,0 +1,58 @@
+# 25.12-6.12 Stage 1 — upstream qualcommbe/ipq95xx baseline.
+#
+# Board is qualcommbe, subtarget ipq95xx (upstream 25.12 ships both); the
+# device is our spectrum_sbe1v1k addition.  No QSDK NSS/Wi-Fi yet: stage 1
+# verifies that OpenWrt 25.12 + mainline Linux 6.12 builds and produces the
+# three release artifacts for this board.
+CONFIG_TARGET_qualcommbe=y
+CONFIG_TARGET_qualcommbe_ipq95xx=y
+CONFIG_TARGET_qualcommbe_ipq95xx_DEVICE_spectrum_sbe1v1k=y
+
+# Initramfs image is one of the three release artifacts
+# (sbe1v1k-initramfs-fit-uImage.itb).
+CONFIG_TARGET_ROOTFS_INITRAMFS=y
+CONFIG_TARGET_ROOTFS_SQUASHFS=y
+
+# Version string: left at the upstream defaults — VERSIONOPT is off, so
+# VERSION_NUMBER resolves to 25.12-SNAPSHOT (branch default) and VERSION_CODE
+# to the tree's `version` file (sbe1v1k-25.12-stage1-<sha8>).  The banner
+# itself is rendered from files/ by scripts/render-overlay.sh.
+
+# LuCI, kept identical to the 24.10-6.6 image: luci-light collection
+# (system/status/network/firewall + bootstrap), uhttpd on 80/443 with a
+# px5g self-signed certificate, Simplified Chinese catalogue, and the
+# package-manager page.
+CONFIG_PACKAGE_luci-light=y
+CONFIG_PACKAGE_luci-base=y
+CONFIG_PACKAGE_luci-app-firewall=y
+CONFIG_PACKAGE_luci-mod-admin-full=y
+CONFIG_PACKAGE_luci-mod-network=y
+CONFIG_PACKAGE_luci-mod-status=y
+CONFIG_PACKAGE_luci-mod-system=y
+CONFIG_PACKAGE_luci-theme-bootstrap=y
+CONFIG_PACKAGE_luci-proto-ppp=y
+CONFIG_PACKAGE_luci-proto-ipv6=y
+CONFIG_PACKAGE_luci-i18n-base-zh-cn=y
+CONFIG_PACKAGE_luci-i18n-firewall-zh-cn=y
+CONFIG_LUCI_LANG_zh_Hans=y
+CONFIG_PACKAGE_uhttpd=y
+CONFIG_PACKAGE_uhttpd-mod-ubus=y
+CONFIG_PACKAGE_uhttpd-mod-ucode=y
+CONFIG_PACKAGE_px5g-mbedtls=y
+CONFIG_PACKAGE_rpcd=y
+CONFIG_PACKAGE_rpcd-mod-file=y
+CONFIG_PACKAGE_rpcd-mod-luci=y
+CONFIG_PACKAGE_rpcd-mod-ucode=y
+CONFIG_PACKAGE_rpcd-mod-rrdns=y
+CONFIG_PACKAGE_cgi-io=y
+CONFIG_PACKAGE_ucode-mod-math=y
+CONFIG_PACKAGE_ucode-mod-html=y
+CONFIG_PACKAGE_liblucihttp-ucode=y
+CONFIG_PACKAGE_luci-app-package-manager=y
+CONFIG_PACKAGE_luci-i18n-package-manager-zh-cn=y
+
+# ttyd web terminal: present as on 24.10-6.6, but the project-owned
+# sbe1v1k-defaults package turns it off on first boot
+# (build/local-packages/sbe1v1k-defaults/files/99-ttyd-disable).
+CONFIG_PACKAGE_ttyd=y
+CONFIG_PACKAGE_sbe1v1k-defaults=y

@@ -1,0 +1,9 @@
+#!/bin/sh
+# SBE1V1K local default: keep the ttyd web terminal disabled until the
+# operator enables it explicitly (LuCI -> Services -> Terminal).
+# Upstream qca ttyd.init defaults "enable" to 1, i.e. a LAN listener on
+# port 7681 with /bin/login as soon as the package is installed.
+[ -f /etc/config/ttyd ] || exit 0
+uci -q set ttyd.ttyd.enable='0'
+uci -q commit ttyd
+exit 0

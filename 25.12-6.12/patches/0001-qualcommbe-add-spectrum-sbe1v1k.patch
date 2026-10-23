@@ -1,0 +1,61 @@
+From: sbe1v1k 25.12-6.12 port <noreply@sbe1v1k-build>
+Subject: [PATCH] qualcommbe: add Spectrum SBE1V1K device (stage 1 baseline)
+
+Stage 1 of the 25.12-6.12 port: build the SBE1V1K on the upstream
+qualcommbe/ipq95xx support (mainline Linux 6.12, PPE Ethernet, no QSDK
+NSS yet).  The device reuses the upstream RDP433 device tree until the
+board-specific DT lands with the NSS port.
+
+Also adds the pwm feature so kmod-leds-pwm/kmod-hwmon-pwmfan selected by
+DEVICE_PACKAGES are available.
+---
+--- a/target/linux/qualcommbe/Makefile
++++ b/target/linux/qualcommbe/Makefile
+@@ -3,7 +3,7 @@
+ ARCH:=aarch64
+ BOARD:=qualcommbe
+ BOARDNAME:=Qualcomm Atheros 802.11be WiSoC-s
+-FEATURES:=squashfs ramdisk fpu nand rtc emmc source-only
++FEATURES:=squashfs ramdisk fpu nand rtc emmc pwm source-only
+ KERNELNAME:=Image
+ CPU_TYPE:=cortex-a53
+ SUBTARGETS:=ipq95xx
+--- a/target/linux/qualcommbe/image/ipq95xx.mk
++++ b/target/linux/qualcommbe/image/ipq95xx.mk
+@@ -24,3 +24,33 @@
+ 	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
+ endef
+ TARGET_DEVICES += qcom_rdp433
++
++# Spectrum SBE1V1K (Askey, IPQ9574 + 3 x QCN9224).
++#
++# Stage 1 of the 25.12-6.12 port: the device is a buildable baseline on the
++# upstream (mainline 6.12) ipq95xx support.  It deliberately reuses the
++# upstream RDP433 device tree (AP-AL02-C7 baseline, NOR+NAND layout); the
++# board-specific DT (NSS Ethernet ports, PWM LEDs/fan, eMMC) arrives with the
++# QSDK 14.x NSS port in stage 2.  Status: NOT TESTED on hardware.
++#
++# DEVICE_IMG_PREFIX is overridden so the three artifacts carry the names the
++# project publishes: sbe1v1k-squashfs-sysupgrade.bin, sbe1v1k-fit-uImage.itb,
++# sbe1v1k-initramfs-fit-uImage.itb.
++#
++# KERNEL_SIZE/IMAGE_SIZE follow the RDP433 NOR layout; without IMAGE_SIZE the
++# "check-size" step treats the limit as 0 and deletes the sysupgrade image.
++define Device/spectrum_sbe1v1k
++	$(call Device/FitImage)
++	KERNEL_SUFFIX := -fit-uImage.itb
++	DEVICE_IMG_PREFIX := sbe1v1k
++	DEVICE_VENDOR := Spectrum
++	DEVICE_MODEL := SBE1V1K
++	DEVICE_VARIANT :=
++	BOARD_NAME := spectrum_sbe1v1k
++	DEVICE_DTS := ipq9574-rdp433
++	DEVICE_DTS_CONFIG := config@rdp433
++	SOC := ipq9574
++	KERNEL_INSTALL := 1
++	KERNEL_SIZE := 6096k
++	IMAGE_SIZE := 25344k
++	DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan
++	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
++endef
++TARGET_DEVICES += spectrum_sbe1v1k

@@ -1,0 +1,44 @@
+#!/bin/sh
+# Deterministic `date` for reproducible builds.
+#
+# Several vendor makefiles call `date` directly at parse time and embed the
+# result in the compiled binary instead of using __DATE__/__TIME__:
+#
+#   qca/src/nss/base/qca-nss-ppe/Makefile:6
+#   qca/src/nss/clients/qca-nss-netfn/offload/sk_offload/Makefile:20
+#   qca/src/nss/clients/qca-nss-ae-clients/Makefile:6
+#   qca/src/nss/apps-oss/qca-ssdk-shell/make/config.mk:71
+#
+# They therefore ignore SOURCE_DATE_EPOCH, which the OpenWrt build exports
+# from include/toplevel.mk.  When that variable is set, pin the clock to it
+# so that two clean builds of the same tree are byte-identical.
+#
+# Explicit date sources (-d/--date, -f/--file, -r/--reference, -s/--set) are
+# passed through untouched: scripts/ipkg-build calls
+# `date --date="@$PKG_SOURCE_DATE_EPOCH"` and must keep using its own value.
+#
+# This file is put in PATH ahead of build/host-bin by
+# build/sbe1v1k-build.sh; it is not part of the buildroot source tree.
+
+REAL=/usr/bin/gnudate
+[ -x "$REAL" ] || REAL=/bin/date
+
+# Fall back to the tree's computed epoch if the caller did not inherit it.
+if [ -z "$SOURCE_DATE_EPOCH" ] && [ -n "$TOPDIR" ] && [ -x "$TOPDIR/scripts/get_source_date_epoch.sh" ]; then
+	SOURCE_DATE_EPOCH=$("$TOPDIR/scripts/get_source_date_epoch.sh" 2>/dev/null)
+fi
+
+[ -n "$SOURCE_DATE_EPOCH" ] || exec "$REAL" "$@"
+
+for a in "$@"; do
+	case $a in
+	-d|--date|-f|--file|-r|--reference|-s|--set|\
+	--date=*|--file=*|--reference=*|--set=*|--help|--version)
+		exec "$REAL" "$@"
+		;;
+	esac
+done
+
+LC_ALL=C
+export LC_ALL
+exec "$REAL" -d "@$SOURCE_DATE_EPOCH" "$@"
