@@ -73,9 +73,12 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
 ```sh
 ./24.10-6.6/build/sbe1v1k-build.sh defconfig            # 生成 .config
 ./24.10-6.6/build/sbe1v1k-build.sh -j"$(nproc)"         # 完整编译
-./24.10-6.6/build/sbe1v1k-build.sh -j"$(nproc)" target/install   # 只重做 rootfs/镜像
+./24.10-6.6/build/sbe1v1k-build.sh -j"$(nproc)" target/install   # 只重打镜像（不重装软件包）
 ./24.10-6.6/scripts/ci/verify-image.sh                  # 静态校验
 ```
+
+> `target/install` 只重打包镜像，**不会重装软件包**：改了文件 B（增删包）之后必须
+> 跑一次完整 `make`（`sbe1v1k-build.sh -j$(nproc)`），否则镜像仍带旧的包集合。
 
 产物在 `sources/buildroot/bin/targets/ipq95xx/generic/`，只交付三个文件：
 
