@@ -1,0 +1,97 @@
+#!/bin/sh
+# 从本机 eMMC 的 0:ART 分区生成 ath12k 校准文件。
+#
+# 每台设备的校准数据都不同，厂商在开机时从 ART 现取（见 QSDK14 的
+# usr/libexec/sbe-wifi-start）：每张卡读 360 个 512 B 扇区，取前 bdf_size 字节，
+# 对 16 位字做 XOR 校验（结果必须是 0xFFFF），bdf_size 之后的填充必须全是
+# 0x00 或 0xFF。校验通过后写到固件目录，文件名用上游 ath12k 的约定
+# cal-pci-<domain:bus:dev.fn>.bin。
+#
+# 这里只读本机分区、只写本机 /lib/firmware，不涉及任何分发；
+# 公开镜像不含厂商 blob，所以没有固件时直接跳过。
+#
+# 可用环境变量覆盖（仅供本地测试）：SBE_ART_DEV、SBE_FW_DIR。
+
+set -eu
+
+ART=${SBE_ART_DEV:-/dev/mmcblk0p20}
+FW=${SBE_FW_DIR:-/lib/firmware/ath12k/QCN9274/hw2.0}
+log() { logger -t sbe-wifi-cal -- "$*" 2>/dev/null || printf '%s\n' "$*" >&2; }
+
+[ -f "$FW/firmware-2.bin" ] || { log "未安装无线固件，跳过校准生成"; exit 0; }
+[ -e "$ART" ] || { log "$ART 不存在，跳过（非本机硬件？）"; exit 0; }
+
+# ART 分区身份：PARTNAME=0:ART。不符时不动它。
+uevent="/sys/class/block/$(basename "$ART")/uevent"
+if [ -r "$uevent" ] && ! grep -qx 'PARTNAME=0:ART' "$uevent"; then
+	log "$ART 不是 0:ART 分区，跳过"
+	exit 0
+fi
+
+# 校验并安装一张卡。$1=PCI 地址 $2=ART 扇区偏移 $3=bdf_size
+gen_one() {
+	local pci=$1 skip=$2 size=$3 out tmp tmp2
+
+	out="$FW/cal-pci-$pci.bin"
+	if [ -f "$out" ] && [ "$(wc -c < "$out")" -eq 184320 ]; then
+		log "$pci: 已存在，复用"
+		return 0
+	fi
+
+	tmp=$(mktemp "$FW/.cal.XXXXXX") || return 1
+	tmp2=$(mktemp "$FW/.calv.XXXXXX") || { rm -f "$tmp"; return 1; }
+
+	dd if="$ART" of="$tmp"  bs=512 skip="$skip" count=360 2>/dev/null
+	dd if="$ART" of="$tmp2" bs=512 skip="$skip" count=360 2>/dev/null
+	if [ "$(wc -c < "$tmp")" -ne 184320 ] || ! cmp -s "$tmp" "$tmp2"; then
+		log "$pci: ART 读取不稳定或长度不对，放弃"
+		rm -f "$tmp" "$tmp2"
+		return 1
+	fi
+
+	# 前 bdf_size 字节的 16 位 XOR 必须是 0xFFFF（判据与厂商脚本相同）。
+	if ! hexdump -n "$size" -v -e '1/2 "%u\n"' "$tmp" | awk '
+		function bxor(a,b, r,p,x,y) {
+			r=0;p=1
+			while (a||b) {
+				x=a%2;y=b%2;if(x!=y)r+=p
+				a=int(a/2);b=int(b/2);p*=2
+			}
+			return r
+		}
+		{sum=bxor(sum,$1)} END {exit(sum!=65535)}'; then
+		log "$pci: XOR16 校验失败（ART 未初始化或读错分区）"
+		rm -f "$tmp" "$tmp2"
+		return 1
+	fi
+
+	# bdf_size 之后的填充只允许 0x00 / 0xFF。
+	if ! dd if="$tmp" bs=1 skip="$size" 2>/dev/null \
+	     | hexdump -v -e '1/1 "%u\n"' \
+	     | awk '$1!=0 && $1!=255 {bad=1} END {exit bad}'; then
+		log "$pci: 尾部填充异常"
+		rm -f "$tmp" "$tmp2"
+		return 1
+	fi
+
+	chmod 0644 "$tmp"
+	mv "$tmp" "$out"
+	rm -f "$tmp2"
+	log "$pci: 已生成 $(basename "$out")（bdf_size=$size）"
+	return 0
+}
+
+ok=0 total=0
+while read -r pci skip size; do
+	[ -n "${pci:-}" ] || continue
+	total=$((total + 1))
+	gen_one "$pci" "$skip" "$size" && ok=$((ok + 1))
+done <<'EOF'
+0001:01:00.0 708 63488
+0002:01:00.0 1108 102400
+0003:01:00.0 1508 100352
+EOF
+
+[ "$total" -eq 3 ] || { log "内部错误：规格表只有 $total 条"; exit 1; }
+[ "$ok" -eq "$total" ] || { log "只有 $ok/$total 张卡通过校验"; exit 1; }
+exit 0

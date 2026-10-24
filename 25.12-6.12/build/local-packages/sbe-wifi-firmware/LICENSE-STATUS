@@ -1,0 +1,26 @@
+License status: LICENSE_REVIEW_REQUIRED
+
+The files shipped by this package are proprietary binaries extracted verbatim
+from the vendor firmware image distributed with the Spectrum SBE1V1K
+(QSDK14, package sbe-full-candidate version 23).
+
+    lib/firmware/ath12k/QCN9274/hw2.0/firmware-2.bin
+    lib/firmware/ath12k/QCN9274/hw2.0/board-2.bin
+    lib/firmware/ath12k/QCN9274/hw2.0/regdb.bin
+    usr/share/sbe-wifi/bdf41/b1.bin
+    usr/share/sbe-wifi/bdf41/b2.bin
+    usr/share/sbe-wifi/bdf41/b4.bin
+
+The vendor image stores these under ath12k/QCN92XX/hw1.0/; they are
+byte-identical here and only the directory name follows the upstream
+ath12k hw table ("qcn9274 hw2.0" -> QCN9274/hw2.0).
+
+Per-device calibration data (cal-pci-<domain:bus:dev.fn>.bin) is NOT part of
+this package.  The vendor image only contains symlinks into /tmp/sbe-caldata,
+recreated at boot from the eMMC "0:ART" partition; those blobs are specific to
+each unit and were not present in the extracted rootfs.
+
+Their redistribution terms have not been reviewed.  This package exists only
+for local, self-built use on hardware the owner possesses (project decision
+N-3).  Do not redistribute any image built with it until the license review
+is complete.  Per-file SHA-256 sums are in files/FILES-SHA256.

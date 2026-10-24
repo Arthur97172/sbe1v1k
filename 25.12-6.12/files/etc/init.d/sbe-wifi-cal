@@ -1,0 +1,14 @@
+#!/bin/sh /etc/rc.common
+# 在 kmodloader 加载 ath12k 之前，从本机 0:ART 生成校准文件。
+#
+# /etc/init.d/boot（START=10）会调用 /sbin/kmodloader，而 kmod-ath12k 在
+# /etc/modules.d/ath12k 里；本脚本 START=09，确保 cal-pci-*.bin 先就位。
+# 没有安装固件时脚本自身会立即返回（公开镜像就属于这种情况）。
+
+START=09
+STOP=90
+
+start() {
+	[ -x /usr/lib/sbe1v1k/wifi-cal ] || return 0
+	/usr/lib/sbe1v1k/wifi-cal || logger -t sbe-wifi-cal '校准生成失败，ath12k 可能起不来'
+}

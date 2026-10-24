@@ -24,6 +24,11 @@
 /24.10-6.6/build/host-bin/
 /25.12-6.12/build/host-bin/
 
+# Stage 2.5：厂商专有 Wi-Fi 固件 blob 不进 git（LICENSE_REVIEW_REQUIRED，N-3）。
+# 由私有 Release `fw-v1` 分发，scripts/ci/fetch-wifi-blobs.sh 取回并校验；
+# Makefile / FILES-SHA256 / LICENSE-STATUS 仍然入库。
+/25.12-6.12/build/local-packages/sbe-wifi-firmware/files/**/*.bin
+
 # 签名材料与备份
 key-build
 key-build.*
