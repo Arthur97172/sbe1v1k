@@ -14,6 +14,9 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
 │   ├── host-shims.txt        宿主机工具清单（host-bin 软链按它重建）
 │   ├── deterministic-bin/    date 垫片（固定 SOURCE_DATE_EPOCH）
 │   ├── config-seed/          defconfig 种子
+│   ├── custom-packages.conf          文件 B：应用开关清单（改这个）
+│   ├── custom-packages-options.conf  技术性固定选项（每轮重放，勿随意删）
+│   ├── thirdparty-feeds.conf         文件 A：第三方源地址与固定提交
 │   ├── build-fixes/  local-packages/  p-b/   装配期改动与本地软件包
 ├── files/                    固件 overlay（唯一来源，构建时渲染进装配树）
 │   ├── etc/banner                /etc/banner，`%V`/`%R` 由渲染脚本替换
@@ -22,6 +25,8 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
 │   └── usr/lib/sbe1v1k/wireless-defaults       实际逻辑（UCI marker 幂等）
 └── scripts/
     ├── render-overlay.sh     把 files/ 整体复制进 sources/buildroot/files 并替换版本占位符
+    ├── custom-packages.sh    应用文件 B + defconfig + 逐包反查
+    ├── thirdparty-feeds.sh   check / fetch 文件 A 登记的第三方源码
     └── ci/
         ├── prepare-tree.sh   仅 CI：重写 feeds 绝对路径、重建 host-bin、固定时间戳
         ├── verify-image.sh   从最终 sysupgrade 镜像解出 rootfs 做静态校验
@@ -78,13 +83,73 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
 - `openwrt-ipq95xx-generic-spectrum_sbe1v1k-fit-uImage.itb`
 - `openwrt-ipq95xx-generic-spectrum_sbe1v1k-initramfs-fit-uImage.itb`
 
+## 第三方组件：文件 A / 文件 B
+
+第三方应用由两个文件管理，默认内容与当前固件完全一致（已用逐字节 `diff` 验证）。
+
+### 文件 B：`build/custom-packages.conf`（选哪些包）
+
+```sh
+CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-passwall"      # 启用
+# CUSTOM_PACKAGES="$CUSTOM_PACKAGES luci-app-samba4"      # 关闭
+```
+
+- **注释掉 = 关闭**；想彻底不管某个包，删掉整行即可，但那样它就会回到
+  config-seed / Kconfig 默认值，不建议。
+- 只放**应用层**开关。依赖库（`xray-core`、`sing-box`、`mihomo-meta`、`ruby`…）
+  由 defconfig 解析；关闭应用**不会**自动清掉依赖库。
+- 构建入口每次 `make` 前都会自动应用文件 B（本地与 CI 同一路径）。因此
+  **menuconfig 里手改的配置会在下一次构建被覆盖**；临时跳过用
+  `SBE_SKIP_CUSTOM_PACKAGES=1`。
+- defconfig 对未知包/依赖不满足的包是**静默丢弃**的，所以脚本在 defconfig
+  之后逐条反查：启用的包不是 `=y` 就非零退出并指名。
+
+### 文件 B2：`build/custom-packages-options.conf`（技术性固定选项）
+
+存放不随应用开关变化的 Kconfig 行（passwall 的 `INCLUDE_*`、`iw-full` 等）。
+这些符号在父应用关闭时是“不可见”的，defconfig 会把它们从 `.config` 里删掉，
+重新打开父应用时回到默认值（其中多个默认是 `y`，会带进 Geoview 等本项目
+明确不打包的东西）。脚本每轮都原样重放本文件，挡住这种跨轮次漂移。
+
+### 文件 A：`build/thirdparty-feeds.conf`（源码从哪来、钉在哪个提交）
+
+```
+repo <key> <url> <branch> <commit> <vendor-dir> <mode>
+link <feed-name> <repo-key> <subdir>
+local <feed-name> <path>
+```
+
+- `mode=git`：干净单仓库，可 `fetch` 自动对齐固定提交；
+  `mode=manual`：人工剪裁/带补丁（如 wifihistory），只校验不改写。
+- `sources/thirdparty-feed/*` 全是**相对软链**，脚本只维护这些软链和
+  `thirdparty/<repo>` 目录，**不改** `buildroot/feeds.conf`，也**不跑**
+  `scripts/feeds update`（它会产生绝对路径，CI 的 `prepare-tree.sh` 规则不允许）。
+
+```sh
+./24.10-6.6/scripts/thirdparty-feeds.sh check   # 只读校验 HEAD、工作区、软链
+./24.10-6.6/scripts/thirdparty-feeds.sh fetch   # 本地已在 pin 时不联网
+```
+
+### 升级第三方组件
+
+1. 改文件 A 的 `commit`（必要时改 `url`）；
+2. `scripts/thirdparty-feeds.sh fetch` 拉取；
+3. `build/sbe1v1k-build.sh defconfig`，确认 `.config` 没有意外变化；
+4. 更新 `sources/PROVENANCE.md` §2.9 的 pin 与许可证记录；
+5. `scripts/ci/export-sources.sh` 重新导出源码包并上传到 Release，
+   更新工作流使用的 `SOURCE_TAG` / 校验和。
+
+第 5 步不能省：**CI 编译用的是源码包，不是本地 `sources/`**，只改文件 A
+不会影响 CI。
+
 ## CI
 
 `.github/workflows/build-24.10-6.6.yml`（`name: 📦 Build 24.10-6.6`）在 `main` 分支上，
 `24.10-6.6/**` 或工作流本身变更时触发（也可手动 `workflow_dispatch`，可指定源码包 tag）。
 
 流程：下载并校验源码包 → 解包到 `sources/` → `prepare-tree.sh` → `render-overlay.sh`
-（占位符没替换成功就立刻失败）→ 编译 → `verify-image.sh` → 上传日志/产物 →
+（占位符没替换成功就立刻失败）→ `thirdparty-feeds.sh check`（pin/软链）→
+应用文件 B 并逐包反查 → 编译 → `verify-image.sh` → 上传日志/产物 →
 **每次运行新建一个 Release**，tag 为 `v<run>-<attempt>-<sha8>`，资产恰好三个固件文件。
 
 ## 注意

@@ -107,5 +107,25 @@ case "$SOURCE_DATE_EPOCH" in
 esac
 export SOURCE_DATE_EPOCH
 
+# 应用文件 B（第三方应用开关）。文件 B 是应用层的唯一开关源：menuconfig 里的
+# 手工改动会在下一次构建被它覆盖；临时跳过用 SBE_SKIP_CUSTOM_PACKAGES=1。
+# clean 类目标不需要配置，跳过以免触发整棵树的 metadata 扫描。
+if [ "${SBE_SKIP_CUSTOM_PACKAGES:-0}" != 1 ]; then
+	case "${1:-}" in
+	clean|dirclean|distclean|config-clean|help) ;;
+	*)
+		if [ ! -f "$BUILDROOT/.config" ]; then
+			echo "[build] 缺少 $BUILDROOT/.config；请先从 config-seed 生成再构建" >&2
+			exit 1
+		fi
+		"$PROJ/scripts/custom-packages.sh"
+		echo "[build] .config sha256: $(sha256sum "$BUILDROOT/.config" | cut -d' ' -f1)"
+		if [ "${1:-}" = menuconfig ]; then
+			echo "[build] 注意: menuconfig 的改动不会写回文件 B，下次构建会被重新覆盖" >&2
+		fi
+		;;
+	esac
+fi
+
 cd "$BUILDROOT"
 exec make "$@"

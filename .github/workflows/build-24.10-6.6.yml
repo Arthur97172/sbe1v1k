@@ -96,6 +96,16 @@ jobs:
         # 快速失败：banner 占位符没替换成功就不要开始 2.5 小时的编译。
         run: ./24.10-6.6/scripts/render-overlay.sh
 
+      - name: Verify thirdparty source pins
+        # 只读校验：源码包里的第三方仓库 HEAD 必须等于文件 A 的 pin，
+        # thirdparty-feed 的相对软链必须指向正确目录。
+        run: ./24.10-6.6/scripts/thirdparty-feeds.sh check
+
+      - name: Apply custom packages
+        # 应用文件 B（应用开关）并逐包反查。defconfig 对未知包是静默丢弃的，
+        # 反查失败即在此停止，不进入数小时的编译。
+        run: ./24.10-6.6/build/sbe1v1k-build.sh defconfig
+
       - name: Build
         run: |
           set -o pipefail

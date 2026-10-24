@@ -188,6 +188,21 @@ done
 if [ -f "$ROOTFS/usr/lib/opkg/status" ]; then
 	n=$(grep -c '^Package:' "$ROOTFS/usr/lib/opkg/status")
 	ok "包数量 $n"
+
+	# 文件 B 里启用的每个包都必须真的装进镜像（defconfig 静默丢弃的兜底判据）。
+	# 只断言“启用 → 必须存在”；未启用的包可能被依赖拉回来，不做缺席断言。
+	MISSING=""
+	while IFS= read -r p; do
+		[ -n "$p" ] || continue
+		if grep -qx "Package: $p" "$ROOTFS/usr/lib/opkg/status"; then
+			ok "文件 B 启用的包已安装: $p"
+		else
+			bad "文件 B 启用的包未安装: $p"
+			MISSING="$MISSING $p"
+		fi
+	done <<EOF
+$("$PROJ/scripts/custom-packages.sh" --list-enabled)
+EOF
 else
 	bad "缺少 opkg status"
 fi
