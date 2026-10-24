@@ -22,7 +22,7 @@ DEVICE_PACKAGES are available.
  SUBTARGETS:=ipq95xx
 --- a/target/linux/qualcommbe/image/ipq95xx.mk
 +++ b/target/linux/qualcommbe/image/ipq95xx.mk
-@@ -24,3 +24,33 @@
+@@ -24,3 +24,36 @@
  	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
  endef
  TARGET_DEVICES += qcom_rdp433

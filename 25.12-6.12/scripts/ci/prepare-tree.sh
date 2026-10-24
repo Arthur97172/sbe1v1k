@@ -99,6 +99,12 @@ for p in "$PROJ"/patches/*.patch; do
 	echo "[prepare]   $(basename "$p")"
 	patch -d "$BR" -p1 --forward --batch < "$p"
 done
+# patch(1) 只按 hunk 头声明的行数读取：头行写错时会静默截断补丁末尾（0001 曾
+# 因此丢掉 endef 与 TARGET_DEVICES，后续补丁才报 context 不匹配）。用设备定义
+# 的收尾行做断言，让这种损坏在第一处就失败。
+grep -q '^TARGET_DEVICES += spectrum_sbe1v1k$' \
+	"$BR/target/linux/qualcommbe/image/ipq95xx.mk" \
+	|| { echo "补丁应用不完整：ipq95xx.mk 缺少 spectrum_sbe1v1k 设备" >&2; exit 1; }
 
 echo "[prepare] 安装项目自带软件包"
 for d in "$PROJ"/build/local-packages/*/; do
