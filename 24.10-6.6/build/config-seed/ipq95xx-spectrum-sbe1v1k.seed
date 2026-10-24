@@ -200,7 +200,7 @@ CONFIG_PACKAGE_luci-app-upnp=y
 CONFIG_PACKAGE_luci-i18n-upnp-zh-cn=y
 
 # G3.9 — seven apps requested by the user on 2026-10-22 (PassWall, Nikki,
-# OpenClash, poweroffdevice, bandix-plus, cpu-status, wifihistory).
+# OpenClash, poweroff, bandix-plus, cpu-status, wifihistory).
 # Sources and licences: sources/PROVENANCE.md §2.9, docs/SECURITY_FINDINGS.md §7.9.
 # Proxy cores are the in-tree qca versions (xray-core 25.1.30, sing-box
 # 1.12.12) because the upstream passwall-packages releases need Go 1.25/1.27
@@ -267,7 +267,7 @@ CONFIG_PACKAGE_ruby-yaml=y
 # 工具链；本项目只需要 OpenClash 的配置解析脚本，不需要 JIT，故关闭。
 # CONFIG_RUBY_ENABLE_YJIT is not set
 # Small apps.
-CONFIG_PACKAGE_luci-app-poweroffdevice=y
+CONFIG_PACKAGE_luci-app-poweroff=y
 CONFIG_PACKAGE_luci-app-cpu-status=y
 CONFIG_PACKAGE_luci-app-wifihistory=y
 CONFIG_PACKAGE_luci-app-bandix-plus=y

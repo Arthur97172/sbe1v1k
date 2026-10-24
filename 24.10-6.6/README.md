@@ -60,7 +60,7 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
   - 本项目 feeds（`sources/apps`）：`luci-app-fcc`、`luci-app-ledfancontrol`、
     `luci-app-nssecm`、`luci-app-online-upgrade`、`luci-app-substore`
   - 三方 feeds（`sources/thirdparty-feed`）：`luci-app-bandix-plus`、`luci-app-cpu-status`、
-    `luci-app-nikki`、`luci-app-openclash`、`luci-app-passwall`、`luci-app-poweroffdevice`、
+    `luci-app-nikki`、`luci-app-openclash`、`luci-app-passwall`、`luci-app-poweroff`、
     `luci-app-wifihistory`
   - 代理后端（`sources/passwall-selected`）：`chinadns-ng`、`dns2socks`、`ipt2socks`、
     `microsocks`、`shadowsocksr-libev`、`simple-obfs`、`tcping`；另有 `xray`、`sing-box`、
