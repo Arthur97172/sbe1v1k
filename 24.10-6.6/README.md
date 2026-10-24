@@ -27,6 +27,7 @@ Release 资产 `sources-v1` 保存，由 CI 下载并校验 SHA-256 后解包到
     ├── render-overlay.sh     把 files/ 整体复制进 sources/buildroot/files 并替换版本占位符
     ├── custom-packages.sh    应用文件 B + defconfig + 逐包反查
     ├── thirdparty-feeds.sh   check / fetch 文件 A 登记的第三方源码
+    ├── check-kernel.sh       查 CodeLinaro 厂商内核是否有更新；可确认后升级
     └── ci/
         ├── prepare-tree.sh   仅 CI：重写 feeds 绝对路径、重建 host-bin、固定时间戳
         ├── verify-image.sh   从最终 sysupgrade 镜像解出 rootfs 做静态校验
@@ -144,6 +145,47 @@ local <feed-name> <path>
 
 第 5 步不能省：**CI 编译用的是源码包，不是本地 `sources/`**，只改文件 A
 不会影响 CI。
+
+### 检查与升级内核
+
+内核**不会自动升级**：源码是扁平外部树 `sources/buildroot/qca/src/linux-6.6`
+（无 `.git`，构建时不联网），上报版本由 `sources/buildroot/include/kernel-6.6`
+决定，两者必须一致。升级只能靠 `scripts/check-kernel.sh` 显式触发。
+
+```sh
+./24.10-6.6/scripts/check-kernel.sh              # 只看 win_qsdk.common.* 家族
+./24.10-6.6/scripts/check-kernel.sh --all        # 加 win.linux.6.6.* 与 NHSS.*
+./24.10-6.6/scripts/check-kernel.sh --upstream   # 附带上游 6.6.y 的 SUBLEVEL（仅参考）
+./24.10-6.6/scripts/check-kernel.sh upgrade win_qsdk.common.1.0.r50   # 升级（可加 --dry-run）
+./24.10-6.6/scripts/check-kernel.sh rollback     # 整体还原最近一次升级
+```
+
+- **检查**：发现更新版本时，在交互终端里会询问“是否升级到 …”；回答 `y` 就走升级流程。
+  非交互环境（CI、管道）**只报告不动手**，退出码 `2` 并打印 upgrade 命令。
+- **升级**：浅克隆该分支（数 GB、10–40 分钟）→ 换 `qca/src/linux-6.6` →
+  同步 `include/kernel-6.6` 的 `LINUX_VERSION-6.6` → 改名并更新
+  `build-fixes/0002-kernel-6.6-report-*.patch`。**不编译**。
+- **备份**：旧树在 `sources/.kernel-backup/linux-6.6.<旧版本>-<时间戳>/`，
+  含 `tree`、`0002.patch`、`state`。不能放进 `qca/src/` —— 那里的 `linux-*.*`
+  会被 `ipq95xx/Makefile:13` 的 glob 一起匹配。中途失败会自动回滚。
+  确认新内核可用后可删掉该目录（每个约 4 GB）。
+
+退出码：`0`=已最新或升级完成，`1`=本地两处版本不一致/参数错误，`2`=有更新但未升级，
+`3`=读不到远端（限流）。分支名**不含**内核版本（`win_qsdk.common.1.10.r2` 实为
+6.6.47，比现用的 `win_qsdk.common.1.0.r48`=6.6.147 更老），所以逐条读 `Makefile`
+的 `SUBLEVEL` 比较。
+
+升级后必须重编，且 CI 不跟随：
+
+```sh
+make -C sources/buildroot target/linux/clean
+./24.10-6.6/build/sbe1v1k-build.sh defconfig       # 留意 config-6.6 缺符号告警
+./24.10-6.6/build/sbe1v1k-build.sh -j"$(nproc)"
+```
+
+`target/linux/feeds/ipq95xx/config-6.6` 可能需要补新符号；`files-6.6` 里的
+sbe1v1k DTS 由 make 每次拷进新树，无需手工处理。CI 用的是 `sources-v1` 源码包，
+要重新导出上传才生效；新内核在编译与真机验证前一律记为 `UNVERIFIED` / `NOT TESTED`。
 
 ## CI
 
