@@ -82,7 +82,12 @@ for feed in luci packages routing telephony video; do
 	[ -n "$sha" ] || continue
 	[ -d "$BR/feeds/$feed/.git" ] || {
 		echo "[prepare] 缺少 feed $feed" >&2; exit 1; }
-	git -C "$BR/feeds/$feed" checkout -q "$sha"
+	# feeds update 用 --depth 1 克隆当前 tip；固定的提交是更早的历史，浅克隆里
+	# 缺它的树对象，直接 checkout 会报 "fatal: unable to read tree"。先按 SHA
+	# 浅取一次（已存在时是空操作）；不能只看 commit 对象在不在——树可能缺失。
+	echo "[prepare]   $feed@${sha:0:8}"
+	git -C "$BR/feeds/$feed" fetch -q --depth 1 origin "$sha"
+	git -C "$BR/feeds/$feed" -c advice.detachedHead=false checkout -q "$sha"
 done
 
 echo "[prepare] feeds install -a"
