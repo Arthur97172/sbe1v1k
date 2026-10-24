@@ -1,0 +1,66 @@
+From: SBE1V1K build <noreply@example.invalid>
+Subject: [PATCH] qualcommbe: switch spectrum_sbe1v1k to the NSS device tree
+
+Stage 2.3 of the 25.12-6.12 port.  Three changes to the device definition,
+all in one place so the DT and the drivers that consume it can never drift
+apart:
+
+  DEVICE_DTS        ipq9574-rdp433 -> ipq9574-sbe1v1k
+                    (patches/0009 adds that file; it deletes the mainline
+                    PPE node and describes the QSDK EDMA/ess-switch/PPE
+                    data path instead)
+
+  DEVICE_PACKAGES   + kmod-qca-ssdk-nohnat, kmod-qca-nss-dp, kmod-qca-nss-ppe
+                    qca-ssdk pulls in kmod-qca-nss-phy/kmod-qca8k-cc/
+                    kmod-qca8084, qca-nss-ppe pulls in kmod-qca-nss-debug
+                    and kmod-nat46, so the three names are the whole delta.
+
+  DEVICE_DTS_CONFIG is deliberately NOT changed: it is the FIT config node
+                    name, not the DTS name.  Keeping "config@rdp433" means
+                    the image has the same FIT layout the project has always
+                    produced; the bootloader has never been observed.
+
+Trading order matters here: the new DT removes the mainline PPE node, so an
+image built without these modules would have no Ethernet at all.
+
+diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
+--- a/target/linux/qualcommbe/image/ipq95xx.mk
++++ b/target/linux/qualcommbe/image/ipq95xx.mk
+@@ -27,11 +27,15 @@
+ 
+ # Spectrum SBE1V1K (Askey, IPQ9574 + 3 x QCN9224).
+ #
+-# Stage 1 of the 25.12-6.12 port: the device is a buildable baseline on the
+-# upstream (mainline 6.12) ipq95xx support.  It deliberately reuses the
+-# upstream RDP433 device tree (AP-AL02-C7 baseline, NOR+NAND layout); the
+-# board-specific DT (NSS Ethernet ports, PWM LEDs/fan, eMMC) arrives with the
+-# QSDK 14.x NSS port in stage 2.  Status: NOT TESTED on hardware.
++# The device tree is ipq9574-sbe1v1k.dts (stage 2): the QSDK 14.x NSS stack
++# (qca-ssdk + qca-nss-dp + qca-nss-ppe) owns the Ethernet data path, and the
++# mainline PPE node is deleted from the DT.  The switch/PHY topology is still
++# the QSDK RDP433 reference layout - no hardware evidence for the real board
++# yet.  Status: NOT TESTED on hardware.
++#
++# DEVICE_DTS_CONFIG is the FIT configuration node name, not the DTS file name.
++# It stays "config@rdp433" so the image keeps the same FIT layout the project
++# has always produced; the bootloader has not been observed either way.
+ #
+ # DEVICE_IMG_PREFIX is overridden so the three artifacts carry the names the
+ # project publishes: sbe1v1k-squashfs-sysupgrade.bin, sbe1v1k-fit-uImage.itb,
+@@ -44,13 +48,14 @@
+ 	DEVICE_MODEL := SBE1V1K
+ 	DEVICE_VARIANT :=
+ 	BOARD_NAME := spectrum_sbe1v1k
+-	DEVICE_DTS := ipq9574-rdp433
++	DEVICE_DTS := ipq9574-sbe1v1k
+ 	DEVICE_DTS_CONFIG := config@rdp433
+ 	SOC := ipq9574
+ 	KERNEL_INSTALL := 1
+ 	KERNEL_SIZE := 6096k
+ 	IMAGE_SIZE := 25344k
+-	DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan
++	DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan \
++			   kmod-qca-ssdk-nohnat kmod-qca-nss-dp kmod-qca-nss-ppe
+ 	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
+ endef
+ TARGET_DEVICES += spectrum_sbe1v1k

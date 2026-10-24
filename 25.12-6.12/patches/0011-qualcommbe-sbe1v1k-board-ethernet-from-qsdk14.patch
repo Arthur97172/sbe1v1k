@@ -1,0 +1,353 @@
+From: SBE1V1K build <noreply@example.invalid>
+Subject: [PATCH] qualcommbe: sbe1v1k: board Ethernet values from the QSDK 14 DTB
+
+Stage 2.4 of the 25.12-6.12 port.  The stage 2.3 board tree described the
+QSDK RDP433 reference design (4 x qca8075 on PSGMII, 2 x AQR on USXGMII,
+6 nss-dp ports, WAN on port 6, the AQR firmware nvmem cells).  This replaces
+it with the values from the vendor device tree for this exact board, S2
+(extracted/qsdk14/sbe1v1k-askey.dtb, QSDK 14.x - the same driver generation
+as this tree):
+
+  mdio compatible/reg    left as the upstream qcom,ipq9574-mdio /
+                         qcom,ipq4019-mdio controller (the driver is built
+                         in).  qca-ssdk does not recognise either string,
+                         so &ess_switch gets an explicit "mdio-bus" phandle,
+                         which ssdk_dt_parse_mdio_node() checks before its
+                         compatible scan.
+  phy-reset-gpio         two lines again (tlmm 60 qca8075, tlmm 52
+                         RTL8261N).  qca-ssdk only consumes index 0, so the
+                         second line is also wired to the RTL8261N phy node
+                         as "reset-gpios" for phylib.
+  qca8075 package        qsgmii (was psgmii)
+  2.5G PHY (QCA8081)     address 0x1c, sgmii, not C45 (was 0x08, c45, aqr fw)
+  10G PHY (RTL8261N)     address 0x00, C45 (unchanged), AQR fw cells dropped
+  port bitmap            lan = 0x38 (ports 3,4,5), wan = 0x40 (port 6);
+                         S1's 0x58/0x20 disagrees, but NET
+                         (board.d/01_network: "eth1 eth2 eth3" LAN, "eth0"
+                         WAN) matches S2 together with the dp probe order.
+  mac modes              0x0b QSGMII / 0x0f SGMII_CH0 / 0x0d USXGMII
+  nss-dp ports           dp1..dp4 only, in S2 order: port 6 (XGMAC,
+                         0x3a514000, mactype 1), port 5 (0x3a001800),
+                         port 3 (0x3a001400), port 4 (0x3a001600), all
+                         mactype 0.  ppe-offload-disabled and the all-zero
+                         local-mac-address are gone (both were RDP433
+                         artifacts; nss-dp falls back to a random MAC when
+                         the property is a valid zero address).
+  ess-uniphy@7a00000     added, as in S2; the three mainline ethernet-pcs
+                         nodes sharing that window are disabled (their
+                         driver is not built).
+
+EDMA ring layout is unchanged: S2's values are identical.
+Status: compiles; NOT TESTED on hardware.
+
+diff --git a/target/linux/qualcommbe/files/arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dts b/target/linux/qualcommbe/files/arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dts
+--- a/target/linux/qualcommbe/files/arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dts
++++ b/target/linux/qualcommbe/files/arch/arm64/boot/dts/qcom/ipq9574-sbe1v1k.dts
+@@ -6,15 +6,23 @@
+  * QSDK 14.x NSS stack (qca-ssdk + qca-nss-dp + qca-nss-ppe) instead of the
+  * mainline IPQ9574 PPE driver.
+  *
+- * The SBE1V1K board itself is not documented.  The hardware baseline that
+- * Stage 1 shipped (PCIe slots, MDIO/PHY wiring, NOR/NAND layout, LEDs and
+- * keys) is therefore inherited unchanged from the upstream RDP433
+- * (AP-AL02-C7) device tree, and the switch/PHY topology follows the QSDK
+- * RDP433 reference: 4 x QCA8075 on PSGMII (lan1..lan4) plus 2 x AQR on
+- * USXGMII (lan5, wan).  Every value here that describes the reference design
+- * rather than the real SBE1V1K has to be re-derived from hardware evidence
+- * (vendor DTS, boot log or board photographs) before this file is used on a
+- * device.
++ * Stage 2.4: the MDIO/PHY/switch values now come from the vendor device
++ * trees for this exact board.  The primary source is S2, the QSDK 14.x DTB
++ * extracted from the vendor update image (extracted/qsdk14/sbe1v1k-askey.dtb),
++ * because it was built for the same driver generation this tree uses (QSDK
++ * 14.x qca-ssdk/qca-nss-dp).  S1 (extracted/kernel/sbe1v1k.dtb, QSDK 13)
++ * agrees on every PHY address and MAC mode but differs on the LAN/WAN port
++ * bitmap; the vendor rootfs network defaults (NET, board.d/01_network:
++ * "eth1 eth2 eth3" LAN, "eth0" WAN) match S2, so S2 wins.
++ *
++ * Topology: QCA8075 package (4 ports, QSGMII) on switch ports 1-4,
++ * QCA8081 2.5G on port 5 (SGMII), RTL8261N 10G on port 6 (USXGMII, C45).
++ * The nss-dp probe order makes port 6 eth0 (WAN) and ports 5/3/4 eth1..eth3
++ * (LAN), which is exactly NET's mapping.
++ *
++ * Still UNVERIFIED: nothing here has been observed on hardware.  The board
++ * description outside the Ethernet block (PCIe slots, NOR/NAND layout, LEDs
++ * and keys) is still inherited from the upstream RDP433 device tree.
+  *
+  * Status: compile tested only, NOT TESTED on hardware.
+  */
+@@ -31,12 +39,12 @@
+ 
+ 	aliases {
+ 		serial0 = &blsp1_uart2;
+-		ethernet0 = "/soc@0/dp1@3a001000";
+-		ethernet1 = "/soc@0/dp2@3a001200";
+-		ethernet2 = "/soc@0/dp3@3a001400";
+-		ethernet3 = "/soc@0/dp4@3a001600";
+-		ethernet4 = "/soc@0/dp5@3a510000";
+-		ethernet5 = "/soc@0/dp6@3a514000";
++		/* S2 probe order: port 6 (RTL8261N 10G) first, then the
++		 * QCA8081 and the two qca8075 ports.  NET maps eth0 to WAN. */
++		ethernet0 = "/soc@0/dp1";
++		ethernet1 = "/soc@0/dp2";
++		ethernet2 = "/soc@0/dp3";
++		ethernet3 = "/soc@0/dp4";
+ 	};
+ };
+ 
+@@ -92,20 +100,24 @@
+ 
+ /*
+  * qca-ssdk reads the PHY reset line as "phy-reset-gpio" (singular,
+- * ssdk_dt_parse_mdio_node()), not as the phylib "reset-gpios"; the
+- * management path is SSDK's own MDIO, so use the vendor spelling.
++ * ssdk_dt_parse_phy_info()), not as the phylib "reset-gpios".  It only
++ * consumes index 0 (SSDK_PHY_RESET_GPIO_INDEX), so the qca8075 reset
++ * (tlmm 60) must come first; the RTL8261N reset (tlmm 52) is declared here
++ * to keep the S1/S2 property intact and is also wired to the phy node below
++ * so phylib owns it.
+  */
+ &mdio {
+-	phy-reset-gpio = <&tlmm 60 GPIO_ACTIVE_LOW>;
++	phy-reset-gpio = <&tlmm 60 GPIO_ACTIVE_LOW &tlmm 52 GPIO_ACTIVE_LOW>;
+ 	clock-frequency = <6250000>;
+ 	status = "okay";
+ 
++	/* S2: 4 x qca8075 in one package, QSGMII mode (not PSGMII). */
+ 	ethernet-phy-package@0 {
+ 		compatible = "qcom,qca8075-package";
+ 		#address-cells = <1>;
+ 		#size-cells = <0>;
+ 		reg = <0x10>;
+-		qcom,package-mode = "psgmii";
++		qcom,package-mode = "qsgmii";
+ 
+ 		phy0: ethernet-phy@10 {
+ 			reg = <0x10>;
+@@ -124,20 +136,17 @@
+ 		};
+ 	};
+ 
+-	phy4: ethernet-phy@8 {
+-		compatible = "ethernet-phy-ieee802.3-c45";
+-		reg = <8>;
+-
+-		nvmem-cells = <&aqr_fw>;
+-		nvmem-cell-names = "firmware";
++	/* QCA8081 2.5G, S2 reg 0x1c, SGMII (not C45). */
++	phy4: ethernet-phy@1c {
++		reg = <0x1c>;
+ 	};
+ 
++	/* RTL8261N 10G, S2 reg 0x00, C45.  The RDP433 AQR firmware nvmem
++	 * cells do not apply to this PHY. */
+ 	phy5: ethernet-phy@0 {
+ 		compatible = "ethernet-phy-ieee802.3-c45";
+ 		reg = <0>;
+-
+-		nvmem-cells = <&aqr_fw>;
+-		nvmem-cell-names = "firmware";
++		reset-gpios = <&tlmm 52 GPIO_ACTIVE_LOW>;
+ 	};
+ };
+ 
+@@ -249,18 +258,28 @@
+ };
+ 
+ /*
+- * Switch side of the data path.  Port bitmap, MAC modes and PHY topology are
+- * the QSDK RDP433 reference values; port 0 is the CPU port, ports 1..4 are
+- * the QCA8075 QSGMII channels (lan1..lan4), port 5 is lan5 and port 6 the
+- * wan port, both on AQR USXGMII.
++ * Switch side of the data path, values from S2.
++ *
++ * qca-ssdk finds its MDIO bus in ssdk_dt_parse_mdio_node() by trying the
++ * "mdiobus" phandle on each port node, then the "mdio-bus" phandle on the
++ * switch node, and only then by scanning for a node compatible with
++ * "qcom,ipq40xx-mdio" or "qcom,qca-mdio".  The upstream mdio controller is
++ * "qcom,ipq9574-mdio","qcom,ipq4019-mdio", which matches neither string, so
++ * wire the bus explicitly instead of changing its compatible (the latter
++ * would shadow the mdio-ipq4019 driver match).
++ *
++ * Port roles (S2 + NET): port 6 is WAN (RTL8261N 10G), ports 3, 4 and 5 are
++ * LAN (0x38 = BIT(3)|BIT(4)|BIT(5)); 0x40 = BIT(6).
+  */
+ &ess_switch {
+-	switch_lan_bmp = <0x3e>;	/* lantern ports 1..5 */
+-	switch_wan_bmp = <0x40>;	/* wan port 6 */
++	mdio-bus = <&mdio>;
++
++	switch_lan_bmp = <0x38>;	/* lan: ports 3, 4 (1G) and 5 (2.5G) */
++	switch_wan_bmp = <0x40>;	/* wan: port 6 (10G) */
+ 	/* Values are enum ssdk_port_wrapper_cfg (include/init/ssdk_init.h:129),
+ 	 * one per UNIPHY instance. */
+-	switch_mac_mode = <0x0>;	/* uniphy 0: PSGMII */
+-	switch_mac_mode1 = <0xd>;	/* uniphy 1: USXGMII */
++	switch_mac_mode = <0xb>;	/* uniphy 0: QSGMII */
++	switch_mac_mode1 = <0xf>;	/* uniphy 1: SGMII channel 0 */
+ 	switch_mac_mode2 = <0xd>;	/* uniphy 2: USXGMII */
+ 
+ 	qcom,port_phyinfo {
+@@ -268,36 +287,35 @@
+ 			port_id = <1>;
+ 			phy_address = <16>;
+ 			phy-handle = <&phy0>;
+-			phy-mode = "psgmii";
++			phy-mode = "qsgmii";
+ 		};
+ 
+ 		port@1 {
+ 			port_id = <2>;
+ 			phy_address = <17>;
+ 			phy-handle = <&phy1>;
+-			phy-mode = "psgmii";
++			phy-mode = "qsgmii";
+ 		};
+ 
+ 		port@2 {
+ 			port_id = <3>;
+ 			phy_address = <18>;
+ 			phy-handle = <&phy2>;
+-			phy-mode = "psgmii";
++			phy-mode = "qsgmii";
+ 		};
+ 
+ 		port@3 {
+ 			port_id = <4>;
+ 			phy_address = <19>;
+ 			phy-handle = <&phy3>;
+-			phy-mode = "psgmii";
++			phy-mode = "qsgmii";
+ 		};
+ 
+ 		port@4 {
+ 			port_id = <5>;
+-			phy_address = <8>;
+-			ethernet-phy-ieee802.3-c45;
++			phy_address = <0x1c>;
+ 			phy-handle = <&phy4>;
+-			phy-mode = "usxgmii";
++			phy-mode = "sgmii";
+ 		};
+ 
+ 		port@5 {
+@@ -310,64 +328,83 @@
+ 	};
+ };
+ 
++/*
++ * UNIPHY register block consumed by qca-ssdk (ssdk_dt_parse_uniphy(), and
++ * the uniphy clock provider in ssdk_clk.c).  It covers the three 64 KiB
++ * mainline ethernet-pcs windows, so disable those nodes: their driver is not
++ * built into this kernel (CONFIG_PCS_QCOM_IPQ9574 is not set), and enabling
++ * it later would fight qca-ssdk for the same registers.
++ */
++&pcs0 {
++	status = "disabled";
++};
++
++&pcs1 {
++	status = "disabled";
++};
++
++&pcs2 {
++	status = "disabled";
++};
++
+ &soc {
+-	/* qca-nss-dp ports; qcom,id matches the SSDK port id above. */
+-	dp1@3a001000 {
++	ess-uniphy@7a00000 {
++		compatible = "qcom,ess-uniphy";
++		reg = <0x7a00000 0x30000>;
++		uniphy_access_mode = "local bus";
++	};
++
++	/*
++	 * qca-nss-dp ports.  Probe order is DT order and alloc_etherdev_mqs()
++	 * hands out eth%d sequentially, so this order reproduces the vendor
++	 * ethN mapping recorded in NET:
++	 *   eth0 = dp1 = port 6 = RTL8261N 10G   (WAN)
++	 *   eth1 = dp2 = port 5 = QCA8081 2.5G   (LAN)
++	 *   eth2 = dp3 = port 3 = qca8075        (LAN)
++	 *   eth3 = dp4 = port 4 = qca8075        (LAN)
++	 *
++	 * phy-mode is deliberately absent on every dp node: of_get_phy_mode()
++	 * failing sets phylink_en, and ssdk_port_phylink_setup() then takes the
++	 * interface type and phy-handle from qcom,port_phyinfo (S2/RD
++	 * arrangement; S1's per-dp phy-mode belongs to the older driver).
++	 *
++	 * mactype: 0 = qcom_gmac_ops (1G GMAC), 1 = syn_gmac_ops (Synopsys
++	 * XGMAC).  Port 6 is USXGMII, so dp1 gets the XGMAC base
++	 * 0x3a514000 with mactype 1, as in S2.
++	 *
++	 * qcom,ppe-offload-disabled is NOT copied from the RDP433 reference
++	 * dp1..dp4: NSS/PPE offload is the whole point of this image.
++	 */
++	dp1: dp1 {
+ 		device_type = "network";
+ 		compatible = "qcom,nss-dp";
+-		qcom,id = <1>;
+-		reg = <0x3a001000 0x200>;
+-		qcom,mactype = <0>;
+-		local-mac-address = [000000000000];
+-		qcom,ppe-offload-disabled = <1>;
++		qcom,id = <6>;
++		reg = <0x3a514000 0x4000>;
++		qcom,mactype = <1>;
+ 	};
+ 
+-	dp2@3a001200 {
++	dp2: dp2 {
+ 		device_type = "network";
+ 		compatible = "qcom,nss-dp";
+-		qcom,id = <2>;
+-		reg = <0x3a001200 0x200>;
++		qcom,id = <5>;
++		reg = <0x3a001800 0x200>;
+ 		qcom,mactype = <0>;
+-		local-mac-address = [000000000000];
+-		qcom,ppe-offload-disabled = <1>;
+ 	};
+ 
+-	dp3@3a001400 {
++	dp3: dp3 {
+ 		device_type = "network";
+ 		compatible = "qcom,nss-dp";
+ 		qcom,id = <3>;
+ 		reg = <0x3a001400 0x200>;
+ 		qcom,mactype = <0>;
+-		local-mac-address = [000000000000];
+-		qcom,ppe-offload-disabled = <1>;
+ 	};
+ 
+-	dp4@3a001600 {
++	dp4: dp4 {
+ 		device_type = "network";
+ 		compatible = "qcom,nss-dp";
+ 		qcom,id = <4>;
+ 		reg = <0x3a001600 0x200>;
+ 		qcom,mactype = <0>;
+-		local-mac-address = [000000000000];
+-		qcom,ppe-offload-disabled = <1>;
+-	};
+-
+-	dp5@3a510000 {
+-		device_type = "network";
+-		compatible = "qcom,nss-dp";
+-		qcom,id = <5>;
+-		reg = <0x3a510000 0x4000>;
+-		qcom,mactype = <1>;
+-		local-mac-address = [000000000000];
+-	};
+-
+-	dp6@3a514000 {
+-		device_type = "network";
+-		compatible = "qcom,nss-dp";
+-		qcom,id = <6>;
+-		reg = <0x3a514000 0x4000>;
+-		qcom,mactype = <1>;
+-		local-mac-address = [000000000000];
+ 	};
+ };
+ 

@@ -1,0 +1,65 @@
+From: SBE1V1K build <noreply@example.invalid>
+Subject: [PATCH] qualcommbe: add an optional mainline-PPE recovery profile for SBE1V1K
+
+Stage 2.4 of the 25.12-6.12 port.  The primary spectrum_sbe1v1k image now
+runs the QSDK NSS data path, whose board values can only be verified on
+hardware.  If that bring-up fails, the unit must still be recoverable with a
+known-good software stack, so keep the stage 1 baseline as a second,
+explicitly opt-in device:
+
+  spectrum_sbe1v1k_mainline
+
+    DEVICE_DTS       ipq9574-rdp433 (upstream; the board-specific NSS tree
+                     deletes the mainline PPE node, so it cannot be reused)
+    DEVICE_PACKAGES  kmod-qcom-ppe (+ kmod-pcs-qcom-ipq9574 through its
+                     dependency) instead of the qca-ssdk/qca-nss-* trio
+    DEVICE_IMG_PREFIX sbe1v1k-mainline, so the recovery images can never
+                     collide with the three published artifacts
+
+It is not part of the default seed: the CI image set (and the three release
+assets) are unchanged.  The profile has NOT been compiled or booted;
+flashing it is a separate, explicitly approved step.
+
+diff --git a/target/linux/qualcommbe/image/ipq95xx.mk b/target/linux/qualcommbe/image/ipq95xx.mk
+--- a/target/linux/qualcommbe/image/ipq95xx.mk
++++ b/target/linux/qualcommbe/image/ipq95xx.mk
+@@ -59,3 +59,39 @@
+ 	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
+ endef
+ TARGET_DEVICES += spectrum_sbe1v1k
++
++# Spectrum SBE1V1K - mainline PPE fallback (recovery only).
++#
++# Optional second device profile: same SoC and image layout as
++# spectrum_sbe1v1k, but the Ethernet data path is the upstream mainline PPE
++# stack (kmod-qcom-ppe + kmod-pcs-qcom-ipq9574) on the upstream RDP433 device
++# tree, i.e. the stage 1 baseline that already built and produced artifacts
++# before the QSDK NSS port.  It exists so a failed NSS bring-up can be
++# recovered by flashing this image instead of rebuilding from scratch.
++#
++# Not selected by the default seed.  Enable with
++#   CONFIG_TARGET_qualcommbe_ipq95xx_DEVICE_spectrum_sbe1v1k_mainline=y
++# and make sure CONFIG_PACKAGE_kmod-qcom-ppe is not forced off.  Images use
++# the "sbe1v1k-mainline" prefix so they can never overwrite or be mistaken
++# for the three published artifacts.
++#
++# NOT TESTED on hardware; the profile itself has not been compiled yet
++# either (see docs/S24_BOARD_ETHERNET_REPORT.md).
++define Device/spectrum_sbe1v1k_mainline
++	$(call Device/FitImage)
++	KERNEL_SUFFIX := -fit-uImage.itb
++	DEVICE_IMG_PREFIX := sbe1v1k-mainline
++	DEVICE_VENDOR := Spectrum
++	DEVICE_MODEL := SBE1V1K
++	DEVICE_VARIANT := Mainline PPE
++	BOARD_NAME := spectrum_sbe1v1k_mainline
++	DEVICE_DTS := ipq9574-rdp433
++	DEVICE_DTS_CONFIG := config@rdp433
++	SOC := ipq9574
++	KERNEL_INSTALL := 1
++	KERNEL_SIZE := 6096k
++	IMAGE_SIZE := 25344k
++	DEVICE_PACKAGES := kmod-leds-pwm kmod-hwmon-pwmfan kmod-qcom-ppe
++	IMAGE/sysupgrade.bin := append-kernel | pad-to 64k | append-rootfs | pad-rootfs | check-size | append-metadata
++endef
++TARGET_DEVICES += spectrum_sbe1v1k_mainline
