@@ -7,8 +7,13 @@
 #   3. qca/src/nss/base/<pkg>       —— 包 Makefile 里 LOCAL_SRC 指向的源码目录。
 #
 # 用法：nss/install.sh [工作区根]
-#   环境变量：SBE_ROOT、SBE_BUILDROOT、SBE_NSS_SRC（厂商源码树根，
-#             默认 <工作区>/sources/buildroot）
+#   环境变量：
+#     SBE_ROOT       工作区根
+#     SBE_BUILDROOT  25.12 装配树
+#     SBE_NSS_SRC    厂商源码树根（默认 <工作区>/sources/buildroot）
+#     SBE_NSS_BASE   直接指定含 qca-ssdk/、qca-nss-dp/ … 的目录；
+#                    优先于 SBE_NSS_SRC。CI 用它指向从 Release 资产
+#                    nss-src-v1 解出来的目录。
 
 set -euo pipefail
 
@@ -31,7 +36,9 @@ fi
 
 BR=${SBE_BUILDROOT:-$ROOT/sources/buildroot-25.12-6.12}
 SRC=${SBE_NSS_SRC:-$ROOT/sources/buildroot}
+BASE=${SBE_NSS_BASE:-$SRC/qca/src/nss/base}
 [ -d "$BR" ] || { echo "缺少装配树：$BR" >&2; exit 1; }
+[ -d "$BASE" ] || { echo "缺少 NSS 源码目录：$BASE" >&2; exit 1; }
 
 say() { printf '[nss] %s\n' "$*"; }
 
@@ -54,7 +61,7 @@ say "接入 NSS 源码目录 qca/src/nss/base/"
 mkdir -p "$BR/qca/src/nss/base"
 for d in "$NSS"/packages/*/; do
 	name=$(basename "$d")
-	src=$SRC/qca/src/nss/base/$name
+	src=$BASE/$name
 	dst=$BR/qca/src/nss/base/$name
 	if [ ! -d "$src" ]; then
 		# qca-nss-debug 的 LOCAL_SRC 指向 qca-nss-ppe/nss_debug，

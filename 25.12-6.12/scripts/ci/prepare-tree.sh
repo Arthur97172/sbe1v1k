@@ -6,14 +6,20 @@
 # （Linux 6.12 + PPE 以太网），本项目的改动只有设备定义和 pwm 特性，
 # 以补丁形式保存在 25.12-6.12/patches/。
 #
+# 唯一的例外是 NSS 数据通路：qca-ssdk / qca-nss-phy / qca-nss-dp /
+# qca-nss-ppe 的源码来自 QSDK 14.x，体积与仓库无关，因此单独发布成
+# Release 资产 nss-src-v1（ISC），这里按 25.12-6.12/nss/nss-src.tar.gz.sha256
+# 校验后解包，再交给 nss/install.sh 装配。
+#
 # 步骤：
 #   1. 若 sources/buildroot-25.12-6.12 不存在，克隆 openwrt/openwrt 并
 #      检出固定的提交（OPENWRT_SHA）；
 #   2. 生成 feeds.conf（openwrt-25.12 分支），feeds update 后把每个 feed
 #      检出到记录的提交，再 feeds install -a；
 #   3. 按顺序应用 25.12-6.12/patches/*.patch；
-#   4. 写入 version（REVISION）与 version.date（固定 SOURCE_DATE_EPOCH）；
-#   5. 重建 host-bin（Ubuntu runner 上没有 /usr/bin/gnu* 前缀）。
+#   4. 安装本地软件包，然后下载/校验/解包 NSS 源码并装配；
+#   5. 写入 version（REVISION）与 version.date（固定 SOURCE_DATE_EPOCH）；
+#   6. 重建 host-bin（Ubuntu runner 上没有 /usr/bin/gnu* 前缀）。
 #
 # 用法：scripts/ci/prepare-tree.sh [工作区根目录]
 # 只允许在 CI 中运行（会改写 host-bin 指向）。
@@ -96,6 +102,44 @@ for d in "$PROJ"/build/local-packages/*/; do
 	rm -rf "$BR/package/$name"
 	cp -a "$d" "$BR/package/$name"
 	echo "[prepare]   package/$name"
+done
+
+# NSS 源码不在仓库里（QSDK 厂商树有数十 GB），单独发布成 Release 资产
+# nss-src-v1。默认设备 spectrum_sbe1v1k 的 DEVICE_PACKAGES 依赖
+# kmod-qca-ssdk-nohnat / kmod-qca-nss-dp / kmod-qca-nss-ppe，而补丁 0009
+# 又删掉了主线 PPE 节点；不装这几个包，镜像就没有以太网。
+NSS_URL=${NSS_SRC_URL:-https://github.com/Arthur97172/sbe1v1k/releases/download/nss-src-v1/nss-src-v1.tar.gz}
+NSS_SHA_FILE=$PROJ/nss/nss-src.tar.gz.sha256
+NSS_CACHE=$ROOT/.sbe-cache
+
+echo "[prepare] 接入 NSS 源码"
+mkdir -p "$NSS_CACHE"
+if [ -n "${SBE_NSS_BASE:-}" ]; then
+	echo "[prepare]   使用 SBE_NSS_BASE=$SBE_NSS_BASE"
+elif [ -d "$NSS_CACHE/nss-src-v1/qca-ssdk" ]; then
+	echo "[prepare]   复用 $NSS_CACHE/nss-src-v1"
+	SBE_NSS_BASE=$NSS_CACHE/nss-src-v1
+else
+	[ -f "$NSS_SHA_FILE" ] || { echo "缺少 $NSS_SHA_FILE" >&2; exit 1; }
+	tmp=$(mktemp -d "$NSS_CACHE/dl.XXXXXX")
+	if [ -n "${SBE_NSS_SRC_TARBALL:-}" ]; then
+		echo "[prepare]   使用本地源码包 $SBE_NSS_SRC_TARBALL"
+		cp "$SBE_NSS_SRC_TARBALL" "$tmp/nss-src-v1.tar.gz"
+	else
+		echo "[prepare]   下载 $NSS_URL"
+		curl -fL --retry 3 --retry-delay 2 -o "$tmp/nss-src-v1.tar.gz" "$NSS_URL"
+	fi
+	cp "$NSS_SHA_FILE" "$tmp/nss-src.tar.gz.sha256"
+	( cd "$tmp" && sha256sum -c nss-src.tar.gz.sha256 ) \
+		|| { echo "NSS 源码包校验失败" >&2; exit 1; }
+	tar -C "$NSS_CACHE" -xzf "$tmp/nss-src-v1.tar.gz"
+	rm -rf "$tmp"
+	SBE_NSS_BASE=$NSS_CACHE/nss-src-v1
+fi
+SBE_NSS_BASE="$SBE_NSS_BASE" SBE_BUILDROOT="$BR" "$PROJ/nss/install.sh" "$ROOT"
+for f in "$BR/package/feeds/nss/qca-ssdk/Makefile" \
+         "$BR/qca/src/nss/base/qca-nss-dp/nss_dp_attach.c"; do
+	[ -e "$f" ] || { echo "NSS 装配不完整，缺少 $f" >&2; exit 1; }
 done
 
 echo "[prepare] 写入 version / version.date"
